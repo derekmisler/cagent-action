@@ -6,7 +6,7 @@ A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents
 
 1. **Add the action to your workflow**:
    ```yaml
-   - uses: docker/cagent-action@v2.0.0
+   - uses: docker/cagent-action@v1.0.0
      with:
        agent: docker/code-analyzer
        prompt: "Analyze this code"
@@ -40,7 +40,7 @@ See [security/README.md](security/README.md) for complete security documentation
 
 ```yaml
 - name: Run CAgent
-  uses: docker/cagent-action@v2.0.0
+  uses: docker/cagent-action@v1.0.0
   with:
     agent: docker/github-action-security-scanner
     prompt: "Analyze these commits for security vulnerabilities"
@@ -76,7 +76,7 @@ jobs:
 
       - name: Analyze Changes
         id: analysis
-        uses: docker/cagent-action@v2.0.0
+        uses: docker/cagent-action@v1.0.0
         with:
           agent: docker/code-analyzer
           prompt: |
@@ -100,7 +100,7 @@ jobs:
 
 ```yaml
 - name: Run Custom Agent
-  uses: docker/cagent-action@v2.0.0
+  uses: docker/cagent-action@v1.0.0
   with:
     agent: ./agents/my-agent.yaml
     prompt: "Analyze the codebase"
@@ -112,7 +112,7 @@ jobs:
 
 ```yaml
 - name: Run CAgent with Custom Settings
-  uses: docker/cagent-action@v2.0.0
+  uses: docker/cagent-action@v1.0.0
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
@@ -134,7 +134,7 @@ jobs:
 ```yaml
 - name: Run CAgent
   id: agent
-  uses: docker/cagent-action@v2.0.0
+  uses: docker/cagent-action@v1.0.0
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
@@ -229,7 +229,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Security Review
-        uses: docker/cagent-action@v2.0.0
+        uses: docker/cagent-action@v1.0.0
         with:
           agent: docker/github-action-security-scanner
           prompt: "Analyze for security issues"
@@ -237,7 +237,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Code Quality Analysis
-        uses: docker/cagent-action@v2.0.0
+        uses: docker/cagent-action@v1.0.0
         with:
           agent: docker/code-quality-analyzer
           prompt: "Analyze code quality and best practices"
@@ -267,7 +267,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Agent
-        uses: docker/cagent-action@v2.0.0
+        uses: docker/cagent-action@v1.0.0
         with:
           agent: ${{ github.event.inputs.agent }}
           prompt: ${{ github.event.inputs.prompt }}
