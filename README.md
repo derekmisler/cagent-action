@@ -7,7 +7,7 @@ A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents
 1. **Add the action to your workflow**:
 
    ```yaml
-   - uses: docker/cagent-action@v1.0.4
+   - uses: docker/cagent-action@latest
      with:
        agent: docker/code-analyzer
        prompt: "Analyze this code"
@@ -42,7 +42,7 @@ See [security/README.md](security/README.md) for complete security documentation
 
 ```yaml
 - name: Run CAgent
-  uses: docker/cagent-action@v1.0.4
+  uses: docker/cagent-action@latest
   with:
     agent: docker/github-action-security-scanner
     prompt: "Analyze these commits for security vulnerabilities"
@@ -78,7 +78,7 @@ jobs:
 
       - name: Analyze Changes
         id: analysis
-        uses: docker/cagent-action@v1.0.4
+        uses: docker/cagent-action@latest
         with:
           agent: docker/code-analyzer
           prompt: |
@@ -102,7 +102,7 @@ jobs:
 
 ```yaml
 - name: Run Custom Agent
-  uses: docker/cagent-action@v1.0.4
+  uses: docker/cagent-action@latest
   with:
     agent: ./agents/my-agent.yaml
     prompt: "Analyze the codebase"
@@ -114,11 +114,11 @@ jobs:
 
 ```yaml
 - name: Run CAgent with Custom Settings
-  uses: docker/cagent-action@v1.0.4
+  uses: docker/cagent-action@latest
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
-    cagent-version: v1.9.11
+    cagent-version: v1.19.4
     mcp-gateway: true # Set to true to install mcp-gateway
     mcp-gateway-version: v0.22.0
     yolo: false # Require manual approval
@@ -135,7 +135,7 @@ jobs:
 ```yaml
 - name: Run CAgent
   id: agent
-  uses: docker/cagent-action@v1.0.4
+  uses: docker/cagent-action@latest
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
@@ -163,7 +163,7 @@ jobs:
 | --------------------- | ------------------------------------------------------------------------------------ | -------- | ------------------------------- |
 | `agent`               | Agent identifier (e.g., `docker/code-analyzer`) or path to `.yaml` file              | Yes      | -                               |
 | `prompt`              | Prompt to pass to the agent                                                          | No       | -                               |
-| `cagent-version`      | Version of cagent to use                                                             | No       | `v1.15.6`                       |
+| `cagent-version`      | Version of cagent to use                                                             | No       | `v1.19.4`                       |
 | `mcp-gateway`         | Install mcp-gateway (`true`/`false`)                                                 | No       | `false`                         |
 | `mcp-gateway-version` | Version of mcp-gateway to use (specifying this will enable mcp-gateway installation) | No       | `v0.22.0`                       |
 | `anthropic-api-key`   | Anthropic API key                                                                    | No       | `$ANTHROPIC_API_KEY` env var    |
@@ -229,7 +229,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Security Review
-        uses: docker/cagent-action@v1.0.4
+        uses: docker/cagent-action@latest
         with:
           agent: docker/github-action-security-scanner
           prompt: "Analyze for security issues"
@@ -237,7 +237,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Code Quality Analysis
-        uses: docker/cagent-action@v1.0.4
+        uses: docker/cagent-action@latest
         with:
           agent: docker/code-quality-analyzer
           prompt: "Analyze code quality and best practices"
@@ -267,7 +267,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Agent
-        uses: docker/cagent-action@v1.0.4
+        uses: docker/cagent-action@latest
         with:
           agent: ${{ github.event.inputs.agent }}
           prompt: ${{ github.event.inputs.prompt }}
