@@ -473,6 +473,15 @@ runs:
             tail -n +$((AGENT_LINE + 1)) "$OUTPUT_FILE" | \
               grep -v "^time=" | \
               grep -v "^level=" | \
+              grep -v "^msg=" | \
+              grep -v "^--- Agent:" | \
+              grep -v "^--- Tool:" | \
+              grep -v "^<thinking>" | \
+              grep -v "^</thinking>" | \
+              grep -v "^\[thinking\]" | \
+              grep -v "^\[/thinking\]" | \
+              grep -v "^Thinking:" | \
+              grep -v "^> \[!NOTE\]" | \
               grep -v "For any feedback" | \
               sed '/^$/N;/^\n$/d' > "${OUTPUT_FILE}.clean"
 
@@ -486,6 +495,15 @@ runs:
         else
           grep -v "^time=" "$OUTPUT_FILE" | \
             grep -v "^level=" | \
+            grep -v "^msg=" | \
+            grep -v "^--- Agent:" | \
+            grep -v "^--- Tool:" | \
+            grep -v "^<thinking>" | \
+            grep -v "^</thinking>" | \
+            grep -v "^\[thinking\]" | \
+            grep -v "^\[/thinking\]" | \
+            grep -v "^Thinking:" | \
+            grep -v "^> \[!NOTE\]" | \
             grep -v "For any feedback" > "${OUTPUT_FILE}.clean"
 
           echo "⚠️  No extraction markers found - cleaned metadata only"

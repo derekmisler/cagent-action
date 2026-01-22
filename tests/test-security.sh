@@ -274,6 +274,43 @@ fi
 set -e
 echo ""
 
+# Test 14: sanitize-output.sh - Should NOT flag regex patterns as leaks (false positive prevention)
+echo "Test 14: Regex pattern in output (should NOT flag as leak)"
+cat > test-regex-output.txt <<'EOF'
+Here is the security pattern for GitHub server tokens:
+'ghs_[a-zA-Z0-9]{36}'
+This pattern matches tokens like ghs_ followed by 36 alphanumeric characters.
+EOF
+
+echo "" > "$GITHUB_OUTPUT"
+set +e
+OUTPUT=$($SECURITY_DIR/sanitize-output.sh test-regex-output.txt 2>&1)
+EXIT_CODE=$?
+if [ $EXIT_CODE -eq 0 ] && echo "$OUTPUT" | grep -q "No secrets detected"; then
+  echo "✅ PASSED: Regex pattern not flagged as false positive"
+else
+  echo "❌ FAILED: Regex pattern incorrectly flagged as secret leak"
+  TEST_FAILED=true
+fi
+set -e
+echo ""
+
+# Test 15: sanitize-output.sh - Should still catch real tokens
+echo "Test 15: Real GitHub server token (should flag as leak)"
+# Create a realistic-looking token (ghs_ + 36 alphanumeric chars)
+echo "Token: ghs_abcdefghijklmnopqrstuvwxyz1234567890" > test-real-token.txt
+
+echo "" > "$GITHUB_OUTPUT"
+set +e
+if $SECURITY_DIR/sanitize-output.sh test-real-token.txt 2>&1 | grep -q "SECRET LEAK DETECTED"; then
+  echo "✅ PASSED: Real token detected"
+else
+  echo "❌ FAILED: Real token not detected"
+  TEST_FAILED=true
+fi
+set -e
+echo ""
+
 # Cleanup
 rm -f test-*.diff test-*-clean.diff test-*.txt test-*-output.txt test-output.diff "$GITHUB_OUTPUT"
 
