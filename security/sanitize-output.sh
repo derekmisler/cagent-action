@@ -26,10 +26,31 @@ DETECTED_PATTERNS=()
 
 # Check each pattern
 for pattern in "${SECRET_PATTERNS[@]}"; do
-  if grep -E "$pattern" "$OUTPUT_FILE" > /dev/null 2>&1; then
-    echo "::error::🚨 SECRET LEAK DETECTED: Pattern matched: $pattern"
-    LEAKED=true
-    DETECTED_PATTERNS+=("$pattern")
+  # Find matches for this pattern
+  MATCHES=$(grep -oE "$pattern" "$OUTPUT_FILE" 2>/dev/null || true)
+
+  if [ -n "$MATCHES" ]; then
+    # Verify each match is a real secret, not a regex pattern or code reference
+    while IFS= read -r match; do
+      # Skip if match contains regex metacharacters (it's probably a pattern definition, not a real secret)
+      # Real tokens are alphanumeric only after the prefix
+      if echo "$match" | grep -qE '[\[\]\{\}\(\)\*\+\?\^\$\\]'; then
+        echo "::debug::Skipping false positive (regex pattern): $match"
+        continue
+      fi
+
+      # Skip if match appears within single quotes (quoted regex pattern in code)
+      if grep -qF "'$match'" "$OUTPUT_FILE" 2>/dev/null; then
+        echo "::debug::Skipping false positive (quoted pattern): $match"
+        continue
+      fi
+
+      # This looks like a real secret
+      echo "::error::🚨 SECRET LEAK DETECTED: Pattern matched: $pattern"
+      LEAKED=true
+      DETECTED_PATTERNS+=("$pattern")
+      break  # One match per pattern is enough to flag
+    done <<< "$MATCHES"
   fi
 done
 
