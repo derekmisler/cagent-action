@@ -305,7 +305,7 @@ runs:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key || env.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ inputs.openai-api-key || env.OPENAI_API_KEY }}
         GOOGLE_API_KEY: ${{ inputs.google-api-key || env.GOOGLE_API_KEY }}
-        GITHUB_PERSONAL_ACCESS_TOKEN: ${{ inputs.github-token || github.token }}
+        GH_TOKEN: ${{ inputs.github-token || github.token }}
         AGENT: ${{ inputs.agent }}
         PROMPT_INPUT: ${{ inputs.prompt }}
         ACTION_PATH: ${{ github.action_path }}
