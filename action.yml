@@ -25,28 +25,34 @@ inputs:
     required: false
     default: "v0.22.0"
   anthropic-api-key:
-    description: "Anthropic API key (defaults to ANTHROPIC_API_KEY secret)"
+    description: "Anthropic API key for Claude models (at least one API key required)"
     required: false
   openai-api-key:
-    description: "OpenAI API key (defaults to OPENAI_API_KEY secret)"
+    description: "OpenAI API key (at least one API key required)"
     required: false
   google-api-key:
-    description: "Google API key for Gemini (defaults to GOOGLE_API_KEY secret)"
+    description: "Google API key for Gemini models (at least one API key required)"
     required: false
   aws-bearer-token-bedrock:
-    description: "AWS Bearer token for Bedrock models (defaults to AWS_BEARER_TOKEN_BEDROCK secret)"
+    description: "AWS Bearer token for Bedrock models (at least one API key required)"
     required: false
   xai-api-key:
-    description: "xAI API key for Grok models (defaults to XAI_API_KEY secret)"
+    description: "xAI API key for Grok models (at least one API key required)"
     required: false
   nebius-api-key:
-    description: "Nebius API key (defaults to NEBIUS_API_KEY secret)"
+    description: "Nebius API key (at least one API key required)"
     required: false
   mistral-api-key:
-    description: "Mistral API key (defaults to MISTRAL_API_KEY secret)"
+    description: "Mistral API key (at least one API key required)"
     required: false
   github-token:
-    description: "GitHub token for API access (defaults to GITHUB_TOKEN env var)"
+    description: "GitHub token for API access (defaults to github.token)"
+    required: false
+  github-app-id:
+    description: "GitHub App ID for custom identity (comments/reviews appear as the app)"
+    required: false
+  github-app-private-key:
+    description: "GitHub App private key (required if github-app-id is provided)"
     required: false
   timeout:
     description: "Timeout in seconds for agent execution (0 for no timeout)"
@@ -62,6 +68,10 @@ inputs:
     default: "."
   yolo:
     description: "Enable yolo mode - auto-approve all prompts (true/false)"
+    required: false
+    default: "true"
+  quiet:
+    description: "Suppress verbose tool call output (true/false). Set to false for debugging."
     required: false
     default: "true"
   extra-args:
@@ -112,6 +122,14 @@ runs:
         DEBUG: ${{ inputs.debug }}
         YOLO: ${{ inputs.yolo }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
+        # API keys (explicit inputs only - no env var fallback)
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+        AWS_BEARER_TOKEN_BEDROCK: ${{ inputs.aws-bearer-token-bedrock }}
+        XAI_API_KEY: ${{ inputs.xai-api-key }}
+        NEBIUS_API_KEY: ${{ inputs.nebius-api-key }}
+        MISTRAL_API_KEY: ${{ inputs.mistral-api-key }}
       run: |
         # Validate agent is provided
         if [[ -z "$AGENT" ]]; then
@@ -131,6 +149,14 @@ runs:
             echo "::error::Invalid mcp-gateway version format '$MCP_GATEWAY_VERSION'. Expected format: v1.2.3"
             exit 1
           fi
+        fi
+
+        # Validate at least one API key is provided (explicit input required)
+        if [[ -z "$ANTHROPIC_API_KEY" && -z "$OPENAI_API_KEY" && -z "$GOOGLE_API_KEY" && \
+              -z "$AWS_BEARER_TOKEN_BEDROCK" && -z "$XAI_API_KEY" && -z "$NEBIUS_API_KEY" && \
+              -z "$MISTRAL_API_KEY" ]]; then
+          echo "::error::At least one API key is required. Provide one of: anthropic-api-key, openai-api-key, google-api-key, aws-bearer-token-bedrock, xai-api-key, nebius-api-key, or mistral-api-key"
+          exit 1
         fi
 
         if [[ "$DEBUG" == "true" ]]; then
@@ -170,6 +196,38 @@ runs:
 
         # Run the authorization check
         $ACTION_PATH/security/check-auth.sh "$COMMENT_ASSOCIATION" "$ALLOWED_ROLES"
+
+    # ========================================
+    # GitHub App Token (Optional)
+    # ========================================
+
+    # Generate token if GitHub App credentials are provided
+    - name: Generate GitHub App token
+      id: app-token
+      if: inputs.github-app-id != ''
+      uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
+      with:
+        app_id: ${{ inputs.github-app-id }}
+        private_key: ${{ inputs.github-app-private-key }}
+
+    - name: Resolve GitHub token
+      id: resolve-token
+      shell: bash
+      run: |
+        if [ -n "$APP_TOKEN" ]; then
+          echo "✅ Using GitHub App token"
+          echo "token=$APP_TOKEN" >> $GITHUB_OUTPUT
+        elif [ -n "$EXPLICIT_TOKEN" ]; then
+          echo "✅ Using provided github-token"
+          echo "token=$EXPLICIT_TOKEN" >> $GITHUB_OUTPUT
+        else
+          echo "ℹ️ Using default github.token"
+          echo "token=$DEFAULT_TOKEN" >> $GITHUB_OUTPUT
+        fi
+      env:
+        APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        EXPLICIT_TOKEN: ${{ inputs.github-token }}
+        DEFAULT_TOKEN: ${{ github.token }}
 
     # ========================================
     # SECURITY: Sanitize and Analyze Input
@@ -344,14 +402,14 @@ runs:
       id: run-agent
       shell: bash
       env:
-        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key || env.ANTHROPIC_API_KEY }}
-        OPENAI_API_KEY: ${{ inputs.openai-api-key || env.OPENAI_API_KEY }}
-        GOOGLE_API_KEY: ${{ inputs.google-api-key || env.GOOGLE_API_KEY }}
-        AWS_BEARER_TOKEN_BEDROCK: ${{ inputs.aws-bearer-token-bedrock || env.AWS_BEARER_TOKEN_BEDROCK }}
-        XAI_API_KEY: ${{ inputs.xai-api-key || env.XAI_API_KEY }}
-        NEBIUS_API_KEY: ${{ inputs.nebius-api-key || env.NEBIUS_API_KEY }}
-        MISTRAL_API_KEY: ${{ inputs.mistral-api-key || env.MISTRAL_API_KEY }}
-        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+        AWS_BEARER_TOKEN_BEDROCK: ${{ inputs.aws-bearer-token-bedrock }}
+        XAI_API_KEY: ${{ inputs.xai-api-key }}
+        NEBIUS_API_KEY: ${{ inputs.nebius-api-key }}
+        MISTRAL_API_KEY: ${{ inputs.mistral-api-key }}
+        GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
         AGENT: ${{ inputs.agent }}
         PROMPT_INPUT: ${{ inputs.prompt }}
         ACTION_PATH: ${{ github.action_path }}
@@ -362,8 +420,19 @@ runs:
         WORKING_DIR: ${{ inputs.working-directory }}
         CAGENT_VERSION: ${{ inputs.cagent-version }}
         MCP_INSTALLED: ${{ steps.setup-binaries.outputs.mcp-installed }}
+        QUIET: ${{ inputs.quiet }}
       run: |
         set -e
+
+        # Mask all API keys to prevent accidental exposure in logs
+        [ -n "$ANTHROPIC_API_KEY" ] && echo "::add-mask::$ANTHROPIC_API_KEY"
+        [ -n "$OPENAI_API_KEY" ] && echo "::add-mask::$OPENAI_API_KEY"
+        [ -n "$GOOGLE_API_KEY" ] && echo "::add-mask::$GOOGLE_API_KEY"
+        [ -n "$AWS_BEARER_TOKEN_BEDROCK" ] && echo "::add-mask::$AWS_BEARER_TOKEN_BEDROCK"
+        [ -n "$XAI_API_KEY" ] && echo "::add-mask::$XAI_API_KEY"
+        [ -n "$NEBIUS_API_KEY" ] && echo "::add-mask::$NEBIUS_API_KEY"
+        [ -n "$MISTRAL_API_KEY" ] && echo "::add-mask::$MISTRAL_API_KEY"
+        [ -n "$GH_TOKEN" ] && echo "::add-mask::$GH_TOKEN"
 
         # Change to working directory
         cd "$WORKING_DIR"
@@ -386,6 +455,11 @@ runs:
         # Add flags
         if [ "$YOLO" = "true" ]; then
           ARGS+=("--yolo")
+        fi
+
+        # Quiet mode: suppress verbose tool output (default: true)
+        if [ "$QUIET" = "true" ]; then
+          ARGS+=("--hide-tool-calls" "--hide-tool-results")
         fi
 
         # Add extra args if provided
@@ -578,7 +652,7 @@ runs:
       if: steps.sanitize-output.outputs.leaked == 'true'
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
         REPOSITORY: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}
       run: |
