@@ -26,6 +26,7 @@ jobs:
       - name: Get GitHub App token
         id: app-token
         if: env.HAS_APP_SECRETS == 'true'
+        continue-on-error: true  # Don't fail workflow if token generation fails
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
         with:
           app_id: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
@@ -219,11 +220,12 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token || github.token }}
           script: |
-            const prNumber = ${{ steps.validate_pr.outputs.pr_number }};
-            const title = '${{ steps.pr_details.outputs.title }}';
-            const branch = '${{ steps.pr_details.outputs.branch }}';
-            const base = '${{ steps.pr_details.outputs.base }}';
-            const conclusion = '${{ steps.generate.conclusion }}';
+            // Use context.issue.number directly - always available, doesn't depend on previous steps
+            const prNumber = context.issue.number;
+            const title = '${{ steps.pr_details.outputs.title }}' || 'Unknown';
+            const branch = '${{ steps.pr_details.outputs.branch }}' || 'Unknown';
+            const base = '${{ steps.pr_details.outputs.base }}' || 'Unknown';
+            const conclusion = '${{ steps.generate.conclusion }}' || 'failure';
 
             const summary = [
               '## 📝 PR Description Generator',
