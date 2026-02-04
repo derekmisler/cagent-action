@@ -16,6 +16,82 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  pull_request_target:
+    types: [ready_for_review, opened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
+    secrets: inherit
+```
+
+### Customizing for your organization
+
+```yaml
+jobs:
+  review:
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
+    with:
+      auto-review-org: my-org  # Only auto-review PRs from this org's members
+      model: anthropic/claude-haiku-4  # Use a faster/cheaper model
+    secrets: inherit
+```
+
+### 2. That's it!
+
+The workflow automatically handles:
+
+| Trigger | Behavior |
+|---------|----------|
+| PR opened/ready | Auto-reviews PRs from Docker org members |
+| `/review` comment | Manual review on any PR |
+| Reply to review comment | Learns from feedback to improve future reviews |
+
+---
+
+## Required Secrets
+
+### Minimal Setup (Just API Key)
+
+| Secret | Description |
+|--------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models* |
+
+*Or another supported provider's API key (OpenAI, Google, etc.)
+
+With just an API key, you can use `/review` comments to trigger reviews manually.
+
+### Full Setup (Auto-Review + Custom Identity)
+
+| Secret | Description | Purpose |
+|--------|-------------|---------|
+| `ANTHROPIC_API_KEY` | API key for your LLM provider | Required |
+| `ORG_MEMBERSHIP_TOKEN` | PAT with `read:org` scope | Auto-review PRs from org members |
+| `CAGENT_REVIEWER_APP_ID` | GitHub App ID | Reviews appear as your app (not github-actions[bot]) |
+| `CAGENT_REVIEWER_APP_PRIVATE_KEY` | GitHub App private key | Required with App ID |
+
+**Note:** Without `ORG_MEMBERSHIP_TOKEN`, only `/review` comments work (no auto-review on PR open).
+Without GitHub App secrets, reviews appear as "github-actions[bot]" which is fine for most teams.
+
+---
+
+## Advanced: Using the Composite Action Directly
+
+For more control over the workflow, use the composite action instead of the reusable workflow:
+
+```yaml
+name: PR Review
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -28,14 +104,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history needed for accurate diffs
+          fetch-depth: 0
+          ref: refs/pull/${{ github.event.issue.number }}/head
 
       - uses: docker/cagent-action/review-pr@latest
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   learn:
-    # Triggers when someone REPLIES to a review comment (for learning from feedback)
     if: github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id
     runs-on: ubuntu-latest
     steps:
@@ -45,17 +122,6 @@ jobs:
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
-
-### 2. Add your API key
-
-**Settings** → **Secrets and variables** → **Actions** → Add `ANTHROPIC_API_KEY`
-
-> **Note:** You only need ONE API key. The examples use Anthropic, but you can use any supported provider (OpenAI, Google, xAI, etc.).
-
-### 3. Use it
-
-- Comment `/review` on any PR to trigger a review
-- **Reply directly** to review comments to teach the agent (the learning system detects replies to its own comments)
 
 ---
 
@@ -142,7 +208,20 @@ Override for more thorough or cost-effective reviews:
 
 ## Inputs
 
-### `review-pr`
+### Reusable Workflow
+
+When using `docker/cagent-action/.github/workflows/review-pr.yml`:
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `pr-number` | PR number (auto-detected from event) | - |
+| `comment-id` | Comment ID for reactions (auto-detected) | - |
+| `additional-prompt` | Additional review guidelines | - |
+| `model` | Model override (e.g., `anthropic/claude-haiku-4`) | - |
+| `cagent-version` | CAgent version | `v1.19.7` |
+| `auto-review-org` | Organization for auto-review membership check | `docker` |
+
+### `review-pr` (Composite Action)
 
 PR number and comment ID are auto-detected from `github.event` when not provided.
 
@@ -162,6 +241,8 @@ PR number and comment ID are auto-detected from `github.event` when not provided
 | `nebius-api-key` | Nebius API key | No* |
 | `mistral-api-key` | Mistral API key | No* |
 | `github-token` | GitHub token | No |
+| `github-app-id` | GitHub App ID for custom identity | No |
+| `github-app-private-key` | GitHub App private key | No |
 | `cagent-version` | CAgent version | No |
 
 *At least one API key is required.
@@ -172,16 +253,18 @@ Comment data is read automatically from `github.event.comment`.
 
 | Input | Description | Required |
 |-------|-------------|----------|
-| `anthropic-api-key` | Anthropic API key | No |
-| `openai-api-key` | OpenAI API key | No |
-| `google-api-key` | Google API key (Gemini) | No |
-| `aws-bearer-token-bedrock` | AWS Bedrock token | No |
-| `xai-api-key` | xAI API key (Grok) | No |
-| `nebius-api-key` | Nebius API key | No |
-| `mistral-api-key` | Mistral API key | No |
+| `anthropic-api-key` | Anthropic API key | No* |
+| `openai-api-key` | OpenAI API key | No* |
+| `google-api-key` | Google API key (Gemini) | No* |
+| `aws-bearer-token-bedrock` | AWS Bedrock token | No* |
+| `xai-api-key` | xAI API key (Grok) | No* |
+| `nebius-api-key` | Nebius API key | No* |
+| `mistral-api-key` | Mistral API key | No* |
 | `github-token` | GitHub token | No |
 | `model` | Model override | No |
 | `cagent-version` | CAgent version | No |
+
+*At least one API key is required.
 
 ---
 
@@ -248,10 +331,12 @@ PR Diff → Drafter (hypotheses) → Verifier (confirm) → Post Comments
 ### Learning System
 
 When you reply to a review comment:
-1. Action checks if it's a reply to an agent comment
+1. Action checks if it's a reply to an agent comment (via `<!-- cagent-review -->` marker)
 2. If yes, processes your feedback
 3. Stores learnings in a memory database (cached per-repo)
 4. Future reviews avoid the same mistakes
+
+**Memory persistence:** The memory database is stored in GitHub Actions cache. Each run restores the previous cache, adds new learnings, and saves with a unique key. Old caches are automatically cleaned up (keeping the 5 most recent) to prevent cache proliferation while supporting concurrent reviews.
 
 ---
 

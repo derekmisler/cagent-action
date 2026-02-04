@@ -11,14 +11,13 @@ A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents
      with:
        agent: docker/code-analyzer
        prompt: "Analyze this code"
-     env:
-       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+       anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
    ```
 
 2. **Configure API key** in your repository settings:
 
    - Go to `Settings` → `Secrets and variables` → `Actions`
-   - Add `ANTHROPIC_API_KEY` with your API key from [Anthropic Console](https://console.anthropic.com/)
+   - Add `ANTHROPIC_API_KEY` (or another provider's key) from [Anthropic Console](https://console.anthropic.com/)
 
 3. **That's it!** The action will automatically:
    - Download the cagent binary
@@ -46,8 +45,7 @@ See [security/README.md](security/README.md) for complete security documentation
   with:
     agent: docker/github-action-security-scanner
     prompt: "Analyze these commits for security vulnerabilities"
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### Analyzing Code Changes
@@ -81,14 +79,13 @@ jobs:
         uses: docker/cagent-action@latest
         with:
           agent: docker/code-analyzer
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Analyze these code changes for quality and best practices:
 
             ```diff
             $(cat pr.diff)
             ```
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Post analysis
         run: |
@@ -106,8 +103,7 @@ jobs:
   with:
     agent: ./agents/my-agent.yaml
     prompt: "Analyze the codebase"
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### Advanced Configuration
@@ -118,16 +114,16 @@ jobs:
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     cagent-version: v1.19.7
     mcp-gateway: true # Set to true to install mcp-gateway
     mcp-gateway-version: v0.22.0
     yolo: false # Require manual approval
     timeout: 600 # 10 minute timeout
     debug: true # Enable debug logging
+    quiet: false # Show verbose tool calls (default: true)
     working-directory: ./src
     extra-args: "--verbose"
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### Using Outputs
@@ -139,8 +135,7 @@ jobs:
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
-  env:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 
 - name: Check execution time
   run: |
@@ -166,18 +161,23 @@ jobs:
 | `cagent-version`      | Version of cagent to use                                                             | No       | `v1.19.7`                       |
 | `mcp-gateway`         | Install mcp-gateway (`true`/`false`)                                                 | No       | `false`                         |
 | `mcp-gateway-version` | Version of mcp-gateway to use (specifying this will enable mcp-gateway installation) | No       | `v0.22.0`                       |
-| `anthropic-api-key`   | Anthropic API key                                                                    | No       | `$ANTHROPIC_API_KEY` env var        |
-| `openai-api-key`      | OpenAI API key                                                                       | No       | `$OPENAI_API_KEY` env var           |
-| `google-api-key`      | Google API key for Gemini                                                            | No       | `$GOOGLE_API_KEY` env var           |
-| `aws-bearer-token-bedrock` | AWS Bearer token for Bedrock models                                             | No       | `$AWS_BEARER_TOKEN_BEDROCK` env var |
-| `xai-api-key`         | xAI API key for Grok models                                                          | No       | `$XAI_API_KEY` env var              |
-| `nebius-api-key`      | Nebius API key                                                                       | No       | `$NEBIUS_API_KEY` env var           |
-| `mistral-api-key`     | Mistral API key                                                                      | No       | `$MISTRAL_API_KEY` env var          |
-| `github-token`        | GitHub token for API access                                                          | No       | Auto-provided by GitHub Actions     |
+| `anthropic-api-key`   | Anthropic API key for Claude models (at least one API key required)                  | No*      | -                                   |
+| `openai-api-key`      | OpenAI API key (at least one API key required)                                       | No*      | -                                   |
+| `google-api-key`      | Google API key for Gemini models (at least one API key required)                     | No*      | -                                   |
+| `aws-bearer-token-bedrock` | AWS Bearer token for Bedrock models (at least one API key required)             | No*      | -                                   |
+| `xai-api-key`         | xAI API key for Grok models (at least one API key required)                          | No*      | -                                   |
+| `nebius-api-key`      | Nebius API key (at least one API key required)                                       | No*      | -                                   |
+| `mistral-api-key`     | Mistral API key (at least one API key required)                                      | No*      | -                                   |
+| `github-token`        | GitHub token for API access                                                          | No       | `github.token`                      |
+| `github-app-id`       | GitHub App ID for custom identity (comments/reviews appear as the app)               | No       | -                                   |
+| `github-app-private-key` | GitHub App private key (required if `github-app-id` is provided)                  | No       | -                                   |
 | `timeout`             | Timeout in seconds for agent execution (0 for no timeout)                            | No       | `0`                             |
 | `debug`               | Enable debug mode with verbose logging (`true`/`false`)                              | No       | `false`                         |
 | `working-directory`   | Working directory to run the agent in                                                | No       | `.`                             |
 | `yolo`                | Auto-approve all prompts (`true`/`false`)                                            | No       | `true`                          |
+| `quiet`               | Suppress verbose tool call output (`true`/`false`). Set to `false` for debugging.    | No       | `true`                          |
+| `max-retries`         | Maximum number of retries on failure (0 = no retries)                                | No       | `2`                             |
+| `retry-delay`         | Seconds to wait between retries                                                      | No       | `5`                             |
 | `extra-args`          | Additional arguments to pass to `cagent exec`                                        | No       | -                               |
 
 ## Outputs
@@ -192,18 +192,18 @@ jobs:
 | `secrets-detected`      | Whether secrets were detected in output                  |
 | `prompt-suspicious`     | Whether suspicious patterns were detected in user prompt |
 
-## Environment Variables
+## API Keys
 
-The action supports the following environment variables for different AI providers:
+**At least one API key is required.** The action validates this at startup and fails fast with a clear error if no API key is provided.
 
-- `ANTHROPIC_API_KEY`: Anthropic API key for Claude models
-- `OPENAI_API_KEY`: OpenAI API key for GPT models
-- `GOOGLE_API_KEY`: Google API key for Gemini models
-- `AWS_BEARER_TOKEN_BEDROCK`: AWS Bearer token for Bedrock models
-- `XAI_API_KEY`: xAI API key for Grok models
-- `NEBIUS_API_KEY`: Nebius API key
-- `MISTRAL_API_KEY`: Mistral API key
-- `GITHUB_TOKEN`: Automatically provided by GitHub Actions (for GitHub API access)
+Supported providers:
+- **Anthropic** (`anthropic-api-key`): Claude models - [Get API key](https://console.anthropic.com/)
+- **OpenAI** (`openai-api-key`): GPT models - [Get API key](https://platform.openai.com/)
+- **Google** (`google-api-key`): Gemini models - [Get API key](https://aistudio.google.com/)
+- **AWS Bedrock** (`aws-bearer-token-bedrock`): Various models via AWS
+- **xAI** (`xai-api-key`): Grok models - [Get API key](https://console.x.ai/)
+- **Nebius** (`nebius-api-key`): Nebius models
+- **Mistral** (`mistral-api-key`): Mistral models - [Get API key](https://console.mistral.ai/)
 
 ## Permissions
 
@@ -215,6 +215,7 @@ permissions:
   pull-requests: write
   issues: write
 ```
+
 
 ## Examples
 
@@ -241,16 +242,14 @@ jobs:
         with:
           agent: docker/github-action-security-scanner
           prompt: "Analyze for security issues"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Code Quality Analysis
         uses: docker/cagent-action@latest
         with:
           agent: docker/code-quality-analyzer
           prompt: "Analyze code quality and best practices"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### Manual Trigger with Inputs
@@ -279,8 +278,7 @@ jobs:
         with:
           agent: ${{ github.event.inputs.agent }}
           prompt: ${{ github.event.inputs.prompt }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ## Contributing
