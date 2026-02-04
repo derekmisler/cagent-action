@@ -18,7 +18,7 @@ agents:
 
     toolsets:
       - type: memory
-        path: pr-review-memory.db
+        path: .github/pr-review-memory.db
       - type: shell
 
 permissions:
