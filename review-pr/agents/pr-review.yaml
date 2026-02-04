@@ -3,6 +3,10 @@ models:
     provider: anthropic
     model: claude-sonnet-4-5
     max_tokens: 8192
+  haiku:
+    provider: anthropic
+    model: claude-haiku-4
+    max_tokens: 4096
 
 agents:
   root:
@@ -22,9 +26,10 @@ agents:
       1. Get the PR diff with `gh pr diff`
       2. Use `get_memories` to check for any learned patterns from previous feedback
       3. Delegate to `drafter` with the diff and any relevant learned patterns
-      4. For each hypothesis from drafter, delegate to `verifier` to confirm or dismiss it
+      4. Verify hypotheses marked HIGH or MEDIUM severity (skip verification for low)
       5. FILTER OUT any issues not on `+` lines from the diff
       6. Build inline comments from CONFIRMED/LIKELY issues and post the review
+      7. Always report ALL HIGH severity bugs. Limit MEDIUM/LOW to 5 comments max.
 
       Find **real bugs in the changed code**, not style issues. If the changed code works correctly, approve it.
 
@@ -59,11 +64,31 @@ agents:
       ```
 
       Map your verdict to event:
-      - "APPROVE" - No bugs found, or only minor issues
-      - "REQUEST_CHANGES" - HIGH severity bugs in CHANGED code only
-      - "COMMENT" - MEDIUM/LOW severity issues worth noting
+      - "APPROVE" - No bugs found, or only minor/medium issues (this should be the DEFAULT)
+      - "COMMENT" - Issues worth noting but not blocking (use this for most findings)
+      - "REQUEST_CHANGES" - ONLY for critical bugs that WILL cause harm in production
 
-      IMPORTANT: Only use "REQUEST_CHANGES" for bugs in the CHANGED code. Never block a PR for issues in existing code.
+      ## When to use REQUEST_CHANGES (RARE - think carefully!)
+
+      REQUEST_CHANGES should be used sparingly. Only use it for bugs that meet ALL criteria:
+      1. **Certain to cause harm** - Not "might" or "could" but WILL break things
+      2. **Production impact** - Data loss, security vulnerability, crash, or service outage
+      3. **No safeguards exist** - Not caught by tests, validation, or runtime checks
+
+      Examples that warrant REQUEST_CHANGES:
+      - SQL injection with user input directly in query
+      - Credentials or secrets hardcoded in code
+      - Infinite loop that will hang the service
+      - Writing to wrong database/table that will corrupt data
+
+      Examples that do NOT warrant REQUEST_CHANGES (use COMMENT instead):
+      - Missing error handling (might cause issues)
+      - Potential race condition (could happen under load)
+      - Resource leak (gradual degradation)
+      - Edge case not handled (rare scenario)
+
+      When in doubt, use COMMENT. Let the author decide if it's worth addressing.
+      REQUEST_CHANGES blocks the PR and should feel like "stop, this will break prod."
 
       End every inline comment body with `<!-- cagent-review -->` for feedback tracking.
 
@@ -76,10 +101,10 @@ agents:
         tools: [read_file, read_multiple_files, list_directory, directory_tree]
       - type: shell
       - type: memory
-        path: pr-review-memory.db
+        path: .github/pr-review-memory.db
 
   drafter:
-    model: sonnet
+    model: haiku
     description: Bug Hypothesis Generator
     instruction: |
       Analyze the provided PR diff and generate specific bug hypotheses.
@@ -132,6 +157,17 @@ agents:
       Style, formatting, naming, documentation, test files.
       Existing code that was not changed in this PR.
 
+      ## Severity Levels (be conservative!)
+
+      - **high**: ONLY for bugs that WILL cause harm - data loss, security breach, crash, outage
+        Examples: SQL injection, hardcoded secrets, infinite loops, writing to wrong DB
+      - **medium**: Bugs that COULD cause issues under certain conditions
+        Examples: Race conditions, resource leaks, missing error handling, edge cases
+      - **low**: Code smells or potential improvements (rarely report these)
+
+      Most real bugs should be MEDIUM. HIGH should be rare and reserved for "stop everything" issues.
+      When in doubt, use MEDIUM.
+
       ## Output Format (REQUIRED)
 
       For each potential bug, output in this EXACT format for inline comment posting:
@@ -144,16 +180,36 @@ agents:
       DETAILS: How it could be triggered and what could go wrong
       ```
 
-      The LINE must be the exact line number from the diff (the number shown in `@@ -X,Y +Z,W @@` hunks).
+      The LINE must be the actual line number in the NEW file (after the PR changes), 1-indexed.
+
+      ## Line Number Calculation Algorithm
+
+      1. Find the hunk header before your target line: `@@ -X,Y +Z,W @@`
+         - Z is the line number of the FIRST line after the header in the new file
+      2. Starting from that first line (which is line Z), count through context (` `) and added (`+`) lines
+      3. SKIP all deleted (`-`) lines - they don't exist in the new file
+      4. Your target line number = Z + (number of ` ` and `+` lines before your target)
+
+      Example:
+      ```
+      @@ -10,5 +15,7 @@
+       context        <- This is line 15 (Z from header, offset 0)
+       context        <- This is line 16 (Z + 1 context line)
+      +problematic    <- This is line 17 (Z + 2 lines) ← report as LINE: 17
+       context        <- This is line 18 (Z + 3 lines)
+      -deleted        <- SKIP - doesn't exist in new file
+       context        <- This is line 19 (Z + 4 lines, skipped the -)
+      ```
+
+      IMPORTANT: GitHub uses 1-indexed lines. Do NOT use 0-indexed line numbers.
       Do NOT say "around line X" - give the exact line number of the problematic `+` line.
 
     toolsets:
       - type: filesystem
-        tools: [read_file, read_multiple_files, list_directory, directory_tree]
-      - type: think  # Keep thinking for bug hypothesis generation
+        tools: [read_file, read_multiple_files]
 
   verifier:
-    model: sonnet
+    model: haiku
     description: Hypothesis Verifier
     instruction: |
       Verify a specific bug hypothesis by reading the full file context.
@@ -187,7 +243,7 @@ agents:
 
     toolsets:
       - type: filesystem
-        tools: [read_file, read_multiple_files, list_directory, directory_tree]
+        tools: [read_file, read_multiple_files]
 
 permissions:
   allow:
