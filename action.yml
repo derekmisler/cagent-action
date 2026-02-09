@@ -467,6 +467,10 @@ runs:
           ARGS+=("--hide-tool-calls" "--hide-tool-results")
         fi
 
+        # Set working directory so relative paths (e.g., memory toolset) resolve
+        # from the repo root, not from the agent YAML's parent directory
+        ARGS+=("--working-dir" "$(pwd)")
+
         # Add extra args if provided
         # Note: This uses simple word splitting. Quoted arguments with spaces are not supported.
         # Using eval would be a security risk with user-provided input.
