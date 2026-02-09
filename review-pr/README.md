@@ -90,8 +90,6 @@ name: PR Review
 on:
   issue_comment:
     types: [created]
-  pull_request_review_comment:
-    types: [created]
 
 permissions:
   contents: read
@@ -111,17 +109,9 @@ jobs:
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-  learn:
-    if: github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/cagent-action/review-pr/learn@latest
-        with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+> **Note:** When using the composite action directly, feedback learning is handled automatically — the review action collects and processes any pending feedback artifacts before each review. To capture feedback, use the reusable workflow which includes the `capture-feedback` job, or add the equivalent artifact upload step to your own workflow.
 
 ---
 
@@ -247,25 +237,6 @@ PR number and comment ID are auto-detected from `github.event` when not provided
 
 *At least one API key is required.
 
-### `review-pr/learn`
-
-Comment data is read automatically from `github.event.comment`.
-
-| Input | Description | Required |
-|-------|-------------|----------|
-| `anthropic-api-key` | Anthropic API key | No* |
-| `openai-api-key` | OpenAI API key | No* |
-| `google-api-key` | Google API key (Gemini) | No* |
-| `aws-bearer-token-bedrock` | AWS Bedrock token | No* |
-| `xai-api-key` | xAI API key (Grok) | No* |
-| `nebius-api-key` | Nebius API key | No* |
-| `mistral-api-key` | Mistral API key | No* |
-| `github-token` | GitHub token | No |
-| `model` | Model override | No |
-| `cagent-version` | CAgent version | No |
-
-*At least one API key is required.
-
 ---
 
 ## Cost
@@ -331,12 +302,12 @@ PR Diff → Drafter (hypotheses) → Verifier (confirm) → Post Comments
 ### Learning System
 
 When you reply to a review comment:
-1. Action checks if it's a reply to an agent comment (via `<!-- cagent-review -->` marker)
-2. If yes, processes your feedback
-3. Stores learnings in a memory database (cached per-repo)
-4. Future reviews avoid the same mistakes
+1. The `capture-feedback` job checks if it's a reply to an agent comment (via `<!-- cagent-review -->` marker)
+2. If yes, saves the feedback as a GitHub Actions artifact (no secrets required — works for fork PRs)
+3. On the next review run, pending feedback artifacts are downloaded and processed into the memory database
+4. Future reviews use these learnings to avoid repeating the same mistakes
 
-**Memory persistence:** The memory database is stored in GitHub Actions cache. Each run restores the previous cache, adds new learnings, and saves with a unique key. Old caches are automatically cleaned up (keeping the 5 most recent) to prevent cache proliferation while supporting concurrent reviews.
+**Memory persistence:** The memory database is stored in GitHub Actions cache. Each review run restores the previous cache, processes any pending feedback, runs the review, and saves with a unique key. Old caches are automatically cleaned up (keeping the 5 most recent).
 
 ---
 
