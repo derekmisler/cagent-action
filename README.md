@@ -277,6 +277,60 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
+### PR Review Workflow (Reusable)
+
+This repo provides a **reusable workflow** at `.github/workflows/review-pr.yml` that adds AI-powered PR reviews to any repository. It supports automatic reviews on PR open, manual `/review` comments, and feedback learning.
+
+#### Setup (Explicit Secrets — No `secrets: inherit`)
+
+This is the security-team-friendly approach. Only the secrets the workflow needs are passed explicitly — nothing else from your repository leaks across the boundary:
+
+```yaml
+name: PR Review
+on:
+  issue_comment: # Enables /review command in PR comments
+    types: [created]
+  pull_request_review_comment: # Captures feedback on review comments for learning
+    types: [created]
+  pull_request_target: # Triggers auto-review on PR open; uses base branch context so secrets work with forks
+    types: [ready_for_review, opened]
+
+jobs:
+  review:
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
+    # Scoped to the job so other jobs in this workflow aren't over-permissioned
+    permissions:
+      contents: read       # Read repository files and PR diffs
+      pull-requests: write # Post review comments and approve/request changes
+      issues: write        # Create security incident issues if secrets are detected in output
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }} # PAT with read:org scope; gates auto-reviews to org members only
+      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }} # GitHub App ID; reviews appear as your app instead of github-actions[bot]
+      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }} # GitHub App private key; paired with App ID above
+```
+
+> **Why not `secrets: inherit`?** Using explicit secrets follows the principle of least privilege — the called workflow only receives the secrets it actually needs, not every secret in your repository. This is the recommended approach for public repos and security-conscious teams.
+
+If you use a different LLM provider, replace `ANTHROPIC_API_KEY` with the appropriate secret (e.g., `OPENAI_API_KEY`, `GOOGLE_API_KEY`). See the full list in the secrets reference below.
+
+#### Reusable Workflow Secrets Reference
+
+| Secret | Required | Description |
+| ------ | -------- | ----------- |
+| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key (or any one LLM key below) |
+| `OPENAI_API_KEY` | No* | OpenAI API key |
+| `GOOGLE_API_KEY` | No* | Google Gemini API key |
+| `AWS_BEARER_TOKEN_BEDROCK` | No* | AWS Bedrock bearer token |
+| `XAI_API_KEY` | No* | xAI Grok API key |
+| `NEBIUS_API_KEY` | No* | Nebius API key |
+| `MISTRAL_API_KEY` | No* | Mistral API key |
+| `CAGENT_ORG_MEMBERSHIP_TOKEN` | No | Classic PAT with `read:org` scope for auto-review gating |
+| `CAGENT_REVIEWER_APP_ID` | No | GitHub App ID for custom reviewer identity |
+| `CAGENT_REVIEWER_APP_PRIVATE_KEY` | No | GitHub App private key (paired with App ID) |
+
+_*At least one LLM API key is required._
+
 ### Manual Trigger with Inputs
 
 ```yaml
