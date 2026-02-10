@@ -372,7 +372,7 @@ runs:
         DELETED=0
         for CACHE_ID in $OLD_CACHES; do
           if gh api "repos/${{ github.repository }}/actions/caches/$CACHE_ID" -X DELETE 2>/dev/null; then
-            ((DELETED++))
+            ((DELETED++)) || true
           fi
         done
 
