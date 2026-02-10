@@ -594,10 +594,14 @@ runs:
         echo "🧹 Extracting clean agent output..."
 
         # Primary method: Extract from cagent-output code block (most reliable)
-        if grep -q '^```cagent-output' "$OUTPUT_FILE"; then
-          awk '/^```cagent-output$/,/^```$/ {
-            if (!/^```cagent-output$/ && !/^```$/) print
-          }' "$OUTPUT_FILE" > "${OUTPUT_FILE}.clean"
+        # Note: the code fence may not be at the start of a line if the agent
+        # emits conversational text before it, so we avoid anchoring with ^.
+        if grep -q '```cagent-output' "$OUTPUT_FILE"; then
+          awk '
+            /```cagent-output/ { capturing=1; next }
+            capturing && /^```/ { capturing=0; next }
+            capturing { print }
+          ' "$OUTPUT_FILE" > "${OUTPUT_FILE}.clean"
           echo "✅ Extracted clean output from cagent-output code block"
         else
           # Use awk to filter out thinking blocks, tool calls, and internal markers
