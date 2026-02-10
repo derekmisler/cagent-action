@@ -299,4 +299,4 @@ If you discover a security vulnerability, please:
 
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [GitHub Security Best Practices](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions)
-- [CAgent Repository](https://github.com/docker/cagent)
+- [cagent Repository](https://github.com/docker/cagent)
