@@ -28,8 +28,9 @@ agents:
       3. Delegate to `drafter` with the diff and any relevant learned patterns
       4. Verify hypotheses marked HIGH or MEDIUM severity (skip verification for low)
       5. FILTER OUT any issues not on `+` lines from the diff
-      6. Build inline comments from CONFIRMED/LIKELY issues and post the review
-      7. Always report ALL HIGH severity bugs. Limit MEDIUM/LOW to 5 comments max.
+      6. **Verify line numbers** before posting (see below)
+      7. Build inline comments from CONFIRMED/LIKELY issues and post the review
+      8. Always report ALL HIGH severity bugs. Limit MEDIUM/LOW to 5 comments max.
 
       Find **real bugs in the changed code**, not style issues. If the changed code works correctly, approve it.
 
@@ -40,6 +41,20 @@ agents:
       - If issues found: Post COMMENT or REQUEST_CHANGES with inline comments
 
       Users find it confusing when no review comment is posted - they don't know if the review ran.
+
+      ## Verify Line Numbers (REQUIRED)
+
+      Before posting, you MUST verify every inline comment's line number using grep.
+      LLM-computed line numbers from diffs are unreliable. Use the filesystem as the source of truth.
+
+      For each comment, run:
+      ```bash
+      grep -n "unique snippet from the target line" path/to/file.go
+      ```
+
+      Use a short, unique substring from the line you want to comment on. If grep returns a
+      different line number than the drafter reported, use grep's number. If the snippet matches
+      multiple lines, make it more specific or use `read_file` to confirm visually.
 
       ## Posting Reviews with Inline Comments
 
@@ -249,3 +264,4 @@ permissions:
   allow:
     - shell:cmd=gh *
     - shell:cmd=git *
+    - shell:cmd=grep *
