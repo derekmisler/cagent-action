@@ -1,6 +1,6 @@
 # cagent GitHub Action
 
-A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents in your workflows. This action simplifies the setup and execution of CAgent, handling binary downloads and environment configuration automatically.
+A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents in your workflows. This action simplifies the setup and execution of cagent, handling binary downloads and environment configuration automatically.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ A GitHub Action for running [cagent](https://github.com/docker/cagent) AI agents
    ```yaml
    - uses: docker/cagent-action@latest
      with:
-       agent: docker/code-analyzer
+       agent: path/to/agent.yaml
        prompt: "Analyze this code"
        anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
    ```
@@ -37,63 +37,46 @@ See [security/README.md](security/README.md) for complete security documentation
 
 ## Usage
 
-### Basic Example
+### AI-Powered PR Reviews
+
+For automated pull request reviews with a multi-agent system, see the [PR Review workflow documentation](review-pr/README.md). The workflow supports:
+
+- Automatic reviews when PRs are opened
+- Manual `/review` command in PR comments
+- Learning from feedback to improve future reviews
+- Customizable review guidelines per language/project
+
+**Quick setup:** Add a workflow file that calls our reusable workflow:
 
 ```yaml
-- name: Run CAgent
-  uses: docker/cagent-action@latest
-  with:
-    agent: docker/github-action-security-scanner
-    prompt: "Analyze these commits for security vulnerabilities"
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-### Analyzing Code Changes
-
-````yaml
-name: Code Analysis
+name: PR Review
 on:
-  pull_request:
-    types: [opened, synchronize]
+  issue_comment: # Enables /review command in PR comments
+    types: [created]
+  pull_request_review_comment: # Captures feedback on review comments for learning
+    types: [created]
+  pull_request_target: # Triggers auto-review on PR open; uses base branch context so secrets work with forks
+    types: [ready_for_review, opened]
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write # For security incident reporting
 
 jobs:
-  analyze:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  review:
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
+    # Scoped to the job so other jobs in this workflow aren't over-permissioned
+    permissions:
+      contents: read       # Read repository files and PR diffs
+      pull-requests: write # Post review comments and approve/request changes
+      issues: write        # Create security incident issues if secrets are detected in output
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }} # PAT with read:org scope; gates auto-reviews to org members only
+      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }} # GitHub App ID; reviews appear as your app instead of github-actions[bot]
+      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }} # GitHub App private key; paired with App ID above
+```
 
-      - name: Get PR diff
-        id: diff
-        run: |
-          gh pr diff ${{ github.event.pull_request.number }} > pr.diff
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Analyze Changes
-        id: analysis
-        uses: docker/cagent-action@latest
-        with:
-          agent: docker/code-analyzer
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Analyze these code changes for quality and best practices:
-
-            ```diff
-            $(cat pr.diff)
-            ```
-
-      - name: Post analysis
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} \
-            --body-file "${{ steps.analysis.outputs.output-file }}"
-        env:
-          GH_TOKEN: ${{ github.token }}
-````
+See the [full PR Review documentation](review-pr/README.md) for more details.
 
 ### Using a Local Agent File
 
@@ -109,13 +92,13 @@ jobs:
 ### Advanced Configuration
 
 ```yaml
-- name: Run CAgent with Custom Settings
+- name: Run cagent with Custom Settings
   uses: docker/cagent-action@latest
   with:
     agent: docker/code-analyzer
     prompt: "Analyze this codebase"
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-    cagent-version: v1.20.6
+    cagent-version: v1.23.0
     mcp-gateway: true # Set to true to install mcp-gateway
     mcp-gateway-version: v0.22.0
     yolo: false # Require manual approval
@@ -130,7 +113,7 @@ jobs:
 ### Using Outputs
 
 ```yaml
-- name: Run CAgent
+- name: Run cagent
   id: agent
   uses: docker/cagent-action@latest
   with:
@@ -159,7 +142,7 @@ jobs:
 | --------------------- | ------------------------------------------------------------------------------------ | -------- | ------------------------------- |
 | `agent`               | Agent identifier (e.g., `docker/code-analyzer`) or path to `.yaml` file              | Yes      | -                               |
 | `prompt`              | Prompt to pass to the agent                                                          | No       | -                               |
-| `cagent-version`      | Version of cagent to use                                                             | No       | `v1.20.6`                       |
+| `cagent-version`      | Version of cagent to use                                                             | No       | `v1.23.0`                       |
 | `mcp-gateway`         | Install mcp-gateway (`true`/`false`)                                                 | No       | `false`                         |
 | `mcp-gateway-version` | Version of mcp-gateway to use (specifying this will enable mcp-gateway installation) | No       | `v0.22.0`                       |
 | `anthropic-api-key`   | Anthropic API key for Claude models (at least one API key required)                  | No*      | -                                   |
@@ -277,59 +260,9 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-### PR Review Workflow (Reusable)
+### PR Review Workflow
 
-This repo provides a **reusable workflow** at `.github/workflows/review-pr.yml` that adds AI-powered PR reviews to any repository. It supports automatic reviews on PR open, manual `/review` comments, and feedback learning.
-
-#### Setup (Explicit Secrets — No `secrets: inherit`)
-
-This is the security-team-friendly approach. Only the secrets the workflow needs are passed explicitly — nothing else from your repository leaks across the boundary:
-
-```yaml
-name: PR Review
-on:
-  issue_comment: # Enables /review command in PR comments
-    types: [created]
-  pull_request_review_comment: # Captures feedback on review comments for learning
-    types: [created]
-  pull_request_target: # Triggers auto-review on PR open; uses base branch context so secrets work with forks
-    types: [ready_for_review, opened]
-
-jobs:
-  review:
-    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
-    # Scoped to the job so other jobs in this workflow aren't over-permissioned
-    permissions:
-      contents: read       # Read repository files and PR diffs
-      pull-requests: write # Post review comments and approve/request changes
-      issues: write        # Create security incident issues if secrets are detected in output
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }} # PAT with read:org scope; gates auto-reviews to org members only
-      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }} # GitHub App ID; reviews appear as your app instead of github-actions[bot]
-      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }} # GitHub App private key; paired with App ID above
-```
-
-> **Why not `secrets: inherit`?** Using explicit secrets follows the principle of least privilege — the called workflow only receives the secrets it actually needs, not every secret in your repository. This is the recommended approach for public repos and security-conscious teams.
-
-If you use a different LLM provider, replace `ANTHROPIC_API_KEY` with the appropriate secret (e.g., `OPENAI_API_KEY`, `GOOGLE_API_KEY`). See the full list in the secrets reference below.
-
-#### Reusable Workflow Secrets Reference
-
-| Secret | Required | Description |
-| ------ | -------- | ----------- |
-| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key (or any one LLM key below) |
-| `OPENAI_API_KEY` | No* | OpenAI API key |
-| `GOOGLE_API_KEY` | No* | Google Gemini API key |
-| `AWS_BEARER_TOKEN_BEDROCK` | No* | AWS Bedrock bearer token |
-| `XAI_API_KEY` | No* | xAI Grok API key |
-| `NEBIUS_API_KEY` | No* | Nebius API key |
-| `MISTRAL_API_KEY` | No* | Mistral API key |
-| `CAGENT_ORG_MEMBERSHIP_TOKEN` | No | Classic PAT with `read:org` scope for auto-review gating |
-| `CAGENT_REVIEWER_APP_ID` | No | GitHub App ID for custom reviewer identity |
-| `CAGENT_REVIEWER_APP_PRIVATE_KEY` | No | GitHub App private key (paired with App ID) |
-
-_*At least one LLM API key is required._
+For comprehensive documentation on setting up AI-powered PR reviews, including features like automatic reviews, the `/review` command, feedback learning, and customization options, see the **[PR Review documentation](review-pr/README.md)**.
 
 ### Manual Trigger with Inputs
 
@@ -384,5 +317,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Links
 
-- [CAgent Repository](https://github.com/docker/cagent)
+- [cagent Repository](https://github.com/docker/cagent)
 - [MCP Gateway Repository](https://github.com/docker/mcp-gateway)

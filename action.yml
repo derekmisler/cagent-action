@@ -1,5 +1,5 @@
-name: "CAgent Runner"
-description: "Run a CAgent AI agent with a single line"
+name: "cagent Runner"
+description: "Run a cagent AI agent with a single line"
 author: "Docker"
 branding:
   icon: "cpu"
@@ -15,7 +15,7 @@ inputs:
   cagent-version:
     description: "Version of cagent to use"
     required: false
-    default: "v1.20.6"
+    default: "v1.23.0"
   mcp-gateway:
     description: "Install mcp-gateway (true/false)"
     required: false
@@ -402,7 +402,7 @@ runs:
         echo "cagent-version=$CAGENT_VERSION" >> $GITHUB_OUTPUT
         echo "mcp-installed=$MCP_INSTALLED" >> $GITHUB_OUTPUT
 
-    - name: Run CAgent
+    - name: Run cagent
       id: run-agent
       shell: bash
       env:
@@ -536,14 +536,14 @@ runs:
 
         # Create job summary
         {
-          echo "## CAgent Execution Summary"
+          echo "## cagent Execution Summary"
           echo ""
           echo "| Property | Value |"
           echo "|----------|-------|"
           echo "| Agent | \`$AGENT\` |"
           echo "| Exit Code | $EXIT_CODE |"
           echo "| Execution Time | ${EXECUTION_TIME}s |"
-          echo "| CAgent Version | $CAGENT_VERSION |"
+          echo "| cagent Version | $CAGENT_VERSION |"
           echo "| MCP Gateway | $MCP_INSTALLED |"
           if [ "$TIMEOUT" != "0" ]; then
             echo "| Timeout | ${TIMEOUT}s |"
