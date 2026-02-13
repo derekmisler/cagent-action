@@ -40,7 +40,7 @@ HIGH_RISK_PATTERNS=(
   "new.*instruction.*follow"
 
   # System/mode override attempts
-  "system.*override"
+  "system.{0,20}override"
   "system.{0,20}mode([^a-z]|$)"
   "admin.*mode"
   "debug.*mode.*enable"
