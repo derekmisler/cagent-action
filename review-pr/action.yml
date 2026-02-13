@@ -53,6 +53,10 @@ inputs:
     description: "Model to use for reviews (e.g., anthropic/claude-sonnet-4-5, openai/gpt-4o)"
     required: false
     default: ""
+  add-prompt-files:
+    description: "Comma-separated list of files to append to the prompt (e.g., 'AGENTS.md,CLAUDE.md')"
+    required: false
+    default: ""
 
 outputs:
   exit-code:
@@ -337,6 +341,7 @@ runs:
         github-token: ${{ steps.resolve-token.outputs.token }}
         cagent-version: ${{ inputs.cagent-version }}
         extra-args: ${{ inputs.model && format('--model={0}', inputs.model) || '' }}
+        add-prompt-files: ${{ inputs.add-prompt-files }}
 
     - name: Save reviewer memory
       if: always()

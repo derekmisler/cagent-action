@@ -54,6 +54,11 @@ on:
         required: false
         type: string
         default: "v1.23.0"
+      add-prompt-files:
+        description: "Comma-separated list of files to append to the prompt (e.g., 'AGENTS.md,CLAUDE.md')"
+        required: false
+        type: string
+        default: ""
       auto-review-org:
         description: "Organization to check membership for auto-reviews"
         required: false
@@ -162,7 +167,7 @@ jobs:
       - name: Generate GitHub App token
         if: steps.membership.outputs.is_member == 'true' && env.HAS_APP_SECRETS == 'true'
         id: app-token
-        continue-on-error: true  # Don't fail workflow if token generation fails
+        continue-on-error: true # Don't fail workflow if token generation fails
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
         with:
           app_id: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
@@ -175,6 +180,7 @@ jobs:
         with:
           pr-number: ${{ inputs.pr-number || github.event.pull_request.number }}
           additional-prompt: ${{ inputs.additional-prompt }}
+          add-prompt-files: ${{ inputs.add-prompt-files }}
           model: ${{ inputs.model }}
           cagent-version: ${{ inputs.cagent-version }}
           github-token: ${{ steps.app-token.outputs.token || github.token }}
@@ -211,7 +217,7 @@ jobs:
       - name: Generate GitHub App token
         if: env.HAS_APP_SECRETS == 'true'
         id: app-token
-        continue-on-error: true  # Don't fail workflow if token generation fails
+        continue-on-error: true # Don't fail workflow if token generation fails
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
         with:
           app_id: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
@@ -224,6 +230,7 @@ jobs:
           pr-number: ${{ inputs.pr-number || github.event.issue.number }}
           comment-id: ${{ inputs.comment-id || github.event.comment.id }}
           additional-prompt: ${{ inputs.additional-prompt }}
+          add-prompt-files: ${{ inputs.add-prompt-files }}
           model: ${{ inputs.model }}
           cagent-version: ${{ inputs.cagent-version }}
           github-token: ${{ steps.app-token.outputs.token || github.token }}
