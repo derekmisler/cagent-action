@@ -426,6 +426,7 @@ runs:
         MCP_INSTALLED: ${{ steps.setup-binaries.outputs.mcp-installed }}
         QUIET: ${{ inputs.quiet }}
         ADD_PROMPT_FILES: ${{ inputs.add-prompt-files }}
+        TELEMETRY_TAGS: "source=github-actions,repo=${{ github.repository }},workflow=${{ github.workflow }},run_id=${{ github.run_id }}"
       run: |
         set -e
 
