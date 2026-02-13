@@ -31,10 +31,12 @@ Scanned 15 commits from the past 2 days. No security vulnerabilities were identi
 EOF
 
 # Extract using the primary method
-if grep -q '^```cagent-output' "$TEST_DIR/output1.log"; then
-  awk '/^```cagent-output$/,/^```$/ {
-    if (!/^```cagent-output$/ && !/^```$/) print
-  }' "$TEST_DIR/output1.log" > "$TEST_DIR/output1.clean"
+if grep -q '```cagent-output' "$TEST_DIR/output1.log"; then
+  awk '
+    /```cagent-output/ { capturing=1; next }
+    capturing && /^```/ { capturing=0; next }
+    capturing { print }
+  ' "$TEST_DIR/output1.log" > "$TEST_DIR/output1.clean"
   echo "✅ Extraction successful"
 else
   echo "❌ cagent-output block not found"
@@ -43,6 +45,52 @@ fi
 echo "Cleaned output:"
 cat "$TEST_DIR/output1.clean"
 echo ""
+
+# Test Case 1b: Code fence NOT at start of line (agent emits thoughts before it)
+echo ""
+echo "Test 1b: Extracting cagent-output when code fence is mid-line"
+echo "---"
+cat > "$TEST_DIR/output1b.log" <<'EOF'
+For any feedback, please visit: https://docker.qualtrics.com/jfe/form/SV_cNsCIg92nQemlfw
+
+time=2025-11-05T21:22:35.664Z level=WARN msg="rootSessionID not set"
+
+--- Agent: root ---
+
+I'll analyze the PR by reading the actual diff and related files to generate a comprehensive description.```cagent-output
+## Summary
+
+Implements automated PR review functionality.
+
+## Changes
+
+### Added
+- New workflow file
+```
+EOF
+
+if grep -q '```cagent-output' "$TEST_DIR/output1b.log"; then
+  awk '
+    /```cagent-output/ { capturing=1; next }
+    capturing && /^```/ { capturing=0; next }
+    capturing { print }
+  ' "$TEST_DIR/output1b.log" > "$TEST_DIR/output1b.clean"
+  echo "✅ Extraction successful"
+else
+  echo "❌ cagent-output block not found"
+fi
+
+echo "Cleaned output:"
+cat "$TEST_DIR/output1b.clean"
+echo ""
+
+# Verify no agent thoughts leaked through
+if grep -q "I'll analyze" "$TEST_DIR/output1b.clean"; then
+  echo "❌ FAIL: Agent thoughts leaked into clean output"
+  exit 1
+else
+  echo "✅ Agent thoughts correctly excluded"
+fi
 
 # Test Case 2: Fallback - Extract after agent marker
 echo ""

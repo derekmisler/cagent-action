@@ -171,18 +171,26 @@ jobs:
             const prNumber = ${{ steps.validate_pr.outputs.pr_number }};
             const descriptionFile = '${{ steps.generate.outputs.output-file }}';
 
-            // Read generated description
-            const description = fs.readFileSync(descriptionFile, 'utf8');
+            try {
+              // Read generated description and extract cagent-output block if present.
+              // The composite action should already clean this, but the agent may
+              // emit conversational text before the code fence that slips through.
+              const raw = fs.readFileSync(descriptionFile, 'utf8');
+              const match = raw.match(/```cagent-output[\s\S]*?\n([\s\S]*?)```/);
+              const description = match ? match[1].trim() : raw.trim();
 
-            // Update PR body
-            await github.rest.pulls.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-              body: description
-            });
+              // Update PR body
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                body: description
+              });
 
-            console.log(`✅ Updated PR #${prNumber} with generated description`);
+              console.log(`✅ Updated PR #${prNumber} with generated description`);
+            } catch (error) {
+              core.setFailed(`❌ Failed to update PR description: ${error.message}`);
+            }
 
       - name: Post success comment
         if: ${{ steps.generate.conclusion == 'success' }}
