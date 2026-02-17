@@ -53,4 +53,4 @@ Look for `good first issue` labels to get started.
 
 ## License
 
-By contributing, you agree your contributions will be licensed under the MIT License.
+By contributing, you agree your contributions will be licensed under the Apache License 2.0.
