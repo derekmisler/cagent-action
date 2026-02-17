@@ -177,7 +177,26 @@ jobs:
               // emit conversational text before the code fence that slips through.
               const raw = fs.readFileSync(descriptionFile, 'utf8');
               const match = raw.match(/```cagent-output[\s\S]*?\n([\s\S]*?)```/);
-              const description = match ? match[1].trim() : raw.trim();
+              let description = match ? match[1].trim() : raw.trim();
+
+              // Preserve issue-closing keywords from the existing PR body
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              const existingBody = pr.body || '';
+              const closingLines = existingBody
+                .split('\n')
+                .filter(line => /^\s*(closes|fixes|resolves)\s*:?\s+/i.test(line))
+                .map(line => line.trim());
+              if (closingLines.length > 0) {
+                // Only append lines not already present in the generated description
+                const missing = closingLines.filter(line => !description.includes(line));
+                if (missing.length > 0) {
+                  description += '\n\n' + missing.join('\n');
+                }
+              }
 
               // Update PR body
               await github.rest.pulls.update({
