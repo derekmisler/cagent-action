@@ -62,9 +62,6 @@ outputs:
   exit-code:
     description: "Exit code from the review"
     value: ${{ steps.run-review.outputs.exit-code }}
-  review-posted:
-    description: "Whether a review was posted"
-    value: ${{ steps.verify-review.outputs.review-verified }}
   review-url:
     description: "URL to the posted review"
     value: ${{ steps.post-summary.outputs.review-url }}
@@ -325,11 +322,6 @@ runs:
     # ========================================
     # RUN REVIEW using root cagent-action
     # ========================================
-    - name: Record pre-review timestamp
-      id: pre-review
-      shell: bash
-      run: echo "timestamp=$(date -u -d '5 seconds ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-5S +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
-
     - name: Run PR Review
       id: run-review
       uses: docker/cagent-action@latest
@@ -349,39 +341,6 @@ runs:
         extra-args: ${{ inputs.model && format('--model={0}', inputs.model) || '' }}
         add-prompt-files: ${{ inputs.add-prompt-files }}
 
-    - name: Verify review was posted
-      id: verify-review
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        PR_NUMBER: ${{ steps.resolve-context.outputs.pr-number }}
-        PRE_REVIEW_TS: ${{ steps.pre-review.outputs.timestamp }}
-        EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
-      run: |
-        # If the agent failed, no review was posted
-        if [ "$EXIT_CODE" != "0" ]; then
-          echo "review-verified=false" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-
-        # Check for a bot review submitted AFTER this run started
-        API_ERR=$(mktemp)
-        REVIEW_COUNT=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
-          --jq --arg ts "$PRE_REVIEW_TS" \
-          '[.[] | select(.user.type == "Bot" and .submitted_at >= $ts)] | length' \
-          2>"$API_ERR" || echo "0")
-        if [ -s "$API_ERR" ]; then
-          echo "::warning::Review verification API error: $(cat "$API_ERR")"
-        fi
-        rm -f "$API_ERR"
-
-        if [ "$REVIEW_COUNT" -eq 0 ]; then
-          echo "::warning::Review agent exited successfully but no review was found on the PR. The GitHub token may have expired during execution."
-          echo "review-verified=false" >> $GITHUB_OUTPUT
-        else
-          echo "review-verified=true" >> $GITHUB_OUTPUT
-        fi
-
     - name: Save reviewer memory
       if: always()
       continue-on-error: true  # Don't fail if memory file doesn't exist (first run)
@@ -398,17 +357,15 @@ runs:
       if: always()
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
         PR_NUMBER: ${{ steps.resolve-context.outputs.pr-number }}
         REPOSITORY: ${{ github.repository }}
         EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
-        REVIEW_VERIFIED: ${{ steps.verify-review.outputs.review-verified }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
         REVIEW_URL="https://github.com/$REPOSITORY/pull/$PR_NUMBER"
         echo "review-url=$REVIEW_URL" >> $GITHUB_OUTPUT
 
-        # Determine status and post fallback comment if review wasn't posted
         if [ "$EXIT_CODE" != "0" ]; then
           STATUS="❌ **Review failed** (exit code: $EXIT_CODE)"
           if ! gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
@@ -416,15 +373,8 @@ runs:
             2>&1; then
             echo "::warning::Failed to post fallback comment to PR"
           fi
-        elif [ "$REVIEW_VERIFIED" == "false" ]; then
-          STATUS="⚠️ **Review not posted** — agent completed but review was not found on the PR (possible token expiry)"
-          if ! gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f body="⚠️ **PR Review Incomplete** — The review agent completed analysis but was unable to post the review due to an authentication timeout. [View logs]($RUN_URL)." \
-            2>&1; then
-            echo "::warning::Failed to post fallback comment to PR"
-          fi
         else
-          STATUS="✅ **Review posted successfully**"
+          STATUS="✅ **Review completed**"
         fi
 
         # Override the default summary with a cleaner one for PR reviews
@@ -443,40 +393,13 @@ runs:
       if: steps.resolve-context.outputs.comment-id != '' && always()
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}  # Use github.token (6h lifetime) — App token may have expired
+        GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
         EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
-        REVIEW_VERIFIED: ${{ steps.verify-review.outputs.review-verified }}
-        PR_NUMBER: ${{ steps.resolve-context.outputs.pr-number }}
-        PRE_REVIEW_TS: ${{ steps.pre-review.outputs.timestamp }}
       run: |
         if [ "$EXIT_CODE" != "0" ]; then
-          # Error: add confused reaction
           gh api "repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions" \
             -X POST -f content='confused' || true
-          exit 0
-        fi
-
-        if [ "$REVIEW_VERIFIED" == "false" ]; then
-          # Agent succeeded but review wasn't posted (likely token expiry)
-          gh api "repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions" \
-            -X POST -f content='confused' || true
-          exit 0
-        fi
-
-        # Get the state of the review posted during THIS run
-        API_ERR=$(mktemp)
-        REVIEW_STATE=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
-          --jq --arg ts "$PRE_REVIEW_TS" \
-          '[.[] | select(.user.type == "Bot" and .submitted_at >= $ts)] | last | .state // empty' \
-          2>"$API_ERR" || echo "")
-        if [ -s "$API_ERR" ]; then
-          echo "::warning::Review state API error: $(cat "$API_ERR")"
-        fi
-        rm -f "$API_ERR"
-
-        if [ "$REVIEW_STATE" == "APPROVED" ]; then
-          # Approved: thumbs up
+        else
           gh api "repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions" \
             -X POST -f content='+1' || true
         fi
-        # Changes requested: no reaction (the review itself is the feedback)
