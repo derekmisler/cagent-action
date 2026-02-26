@@ -171,7 +171,7 @@ for pattern in "${SUSPICIOUS_PATTERNS[@]}"; do
   # Strip ALL matching lines from output regardless of the logging filter.
   # Note: grep -v exits 1 when no lines survive (all matched), so we must
   # separate the grep from the mv to ensure the file is always replaced.
-  grep -ivE "$pattern" "$OUTPUT" > "${OUTPUT}.tmp" 2>/dev/null || true
+  grep -ivE "$pattern" "$INPUT" > "${OUTPUT}.tmp" 2>/dev/null || true
   mv "${OUTPUT}.tmp" "$OUTPUT"
 done
 

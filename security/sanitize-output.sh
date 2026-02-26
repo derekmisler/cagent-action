@@ -27,7 +27,7 @@ DETECTED_PATTERNS=()
 # Check each pattern
 for pattern in "${SECRET_PATTERNS[@]}"; do
   # Find matches for this pattern
-  MATCHES=$(grep -oE "$pattern" "$OUTPUT_FILE" 2>/dev/null || true)
+  MATCHES=$(grep -oF "$pattern" "$OUTPUT_FILE" 2>/dev/null || true)
 
   if [ -n "$MATCHES" ]; then
     # Verify each match is a real secret, not a regex pattern or code reference
