@@ -180,49 +180,6 @@ runs:
           echo "::debug::mcp-gateway install: $MCP_GATEWAY"
         fi
 
-    # ========================================
-    # SECURITY: Authorization Check
-    # Only enforced for comment-triggered events (the main abuse vector)
-    # PR-triggered workflows are controlled by the workflow author
-    # ========================================
-    - name: Check authorization
-      id: check-auth
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        # Get author_association from comment events (the main risk)
-        COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
-        DEBUG: ${{ inputs.debug }}
-      run: |
-        # Only enforce auth for comment-triggered events
-        # This prevents abuse via /commands while allowing PR-triggered workflows to run
-        if [ -z "$COMMENT_ASSOCIATION" ]; then
-          echo "ℹ️ Skipping auth check (not a comment-triggered event)"
-          echo "authorized=skipped" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-
-        echo "Using comment author_association: $COMMENT_ASSOCIATION"
-
-        # Allowed roles (hardcoded for security - cannot be overridden)
-        ALLOWED_ROLES='["OWNER", "MEMBER", "COLLABORATOR"]'
-
-        # Run the authorization check
-        $ACTION_PATH/security/check-auth.sh "$COMMENT_ASSOCIATION" "$ALLOWED_ROLES"
-
-    # ========================================
-    # GitHub App Token (Optional)
-    # ========================================
-
-    # Generate token if GitHub App credentials are provided
-    - name: Generate GitHub App token
-      id: app-token
-      if: inputs.github-app-id != ''
-      uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
-      with:
-        app_id: ${{ inputs.github-app-id }}
-        private_key: ${{ inputs.github-app-private-key }}
-
     - name: Resolve GitHub token
       id: resolve-token
       shell: bash
