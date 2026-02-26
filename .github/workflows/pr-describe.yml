@@ -159,7 +159,7 @@ jobs:
             $(cat pr.diff)
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           github-token: ${{ steps.app-token.outputs.token || github.token }}
-          timeout: 300000 # 5 minutes
+          timeout: 300 # 5 minutes
 
       - name: Update PR description
         if: ${{ steps.generate.conclusion == 'success' }}
@@ -176,8 +176,16 @@ jobs:
               // The composite action should already clean this, but the agent may
               // emit conversational text before the code fence that slips through.
               const raw = fs.readFileSync(descriptionFile, 'utf8');
-              const match = raw.match(/```cagent-output[\s\S]*?\n([\s\S]*?)```/);
-              let description = match ? match[1].trim() : raw.trim();
+              const fenceMatch = raw.match(/```cagent-output[\s\S]*?\n([\s\S]*?)```/);
+              let description;
+              if (fenceMatch) {
+                description = fenceMatch[1].trim();
+              } else {
+                // Fallback: extract from the first markdown heading onward
+                // to avoid leaking tool call traces into the PR body
+                const headingMatch = raw.match(/(^|\n)(## .+[\s\S]*)$/);
+                description = headingMatch ? headingMatch[2].trim() : raw.trim();
+              }
 
               // Preserve issue-closing keywords from the existing PR body
               const { data: pr } = await github.rest.pulls.get({
