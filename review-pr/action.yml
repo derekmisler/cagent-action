@@ -562,6 +562,7 @@ runs:
         github-token: ${{ steps.resolve-token.outputs.token }}
         extra-args: ${{ inputs.model && format('--model={0}', inputs.model) || '' }}
         add-prompt-files: ${{ inputs.add-prompt-files }}
+        max-retries: "0"  # Disable retries — the review agent recovers internally (root falls back when sub-agents fail), so retrying the pipeline produces duplicate reviews
 
     - name: Save reviewer memory
       if: always()
@@ -584,16 +585,25 @@ runs:
         REPOSITORY: ${{ github.repository }}
         EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        VERBOSE_LOG_FILE: ${{ steps.run-review.outputs.verbose-log-file }}
       run: |
         REVIEW_URL="https://github.com/$REPOSITORY/pull/$PR_NUMBER"
         echo "review-url=$REVIEW_URL" >> $GITHUB_OUTPUT
 
         if [ "$EXIT_CODE" != "0" ]; then
-          STATUS="❌ **Review failed** (exit code: $EXIT_CODE)"
-          if ! gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f body="❌ **PR Review Failed** — The review agent encountered an error and could not complete the review. [View logs]($RUN_URL)." \
-            2>&1; then
-            echo "::warning::Failed to post fallback comment to PR"
+          # Check if agent actually posted a review despite the error exit code.
+          # This happens when a sub-agent fails (e.g., API overload) but the root
+          # agent recovers and posts the review itself.
+          if [ -n "$VERBOSE_LOG_FILE" ] && grep -qE 'pullrequestreview-[0-9]+' "$VERBOSE_LOG_FILE" 2>/dev/null; then
+            echo "::warning::Agent exited $EXIT_CODE but a review was posted — treating as partial success"
+            STATUS="⚠️ **Review completed with warnings** (exit code: $EXIT_CODE)"
+          else
+            STATUS="❌ **Review failed** (exit code: $EXIT_CODE)"
+            if ! gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="❌ **PR Review Failed** — The review agent encountered an error and could not complete the review. [View logs]($RUN_URL)." \
+              2>&1; then
+              echo "::warning::Failed to post fallback comment to PR"
+            fi
           fi
         else
           STATUS="✅ **Review completed**"
