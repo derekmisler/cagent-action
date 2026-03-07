@@ -89,24 +89,24 @@ jobs:
           set -e
           echo "Pinning @latest refs to ${VERSION}..."
 
-          # Pin docker/cagent-action@latest -> @vX.Y.Z
-          sed -i "s|docker/cagent-action@latest|docker/cagent-action@${VERSION}|g" review-pr/action.yml
+          # Pin docker/docker-agent-action@latest -> @vX.Y.Z
+          sed -i "s|docker/docker-agent-action@latest|docker/docker-agent-action@${VERSION}|g" review-pr/action.yml
 
-          # Pin docker/cagent-action/review-pr@latest -> @vX.Y.Z
-          sed -i "s|docker/cagent-action/review-pr@latest|docker/cagent-action/review-pr@${VERSION}|g" .github/workflows/review-pr.yml
+          # Pin docker/docker-agent-action/review-pr@latest -> @vX.Y.Z
+          sed -i "s|docker/docker-agent-action/review-pr@latest|docker/docker-agent-action/review-pr@${VERSION}|g" .github/workflows/review-pr.yml
 
           # Verify pinning succeeded — fail fast if refs weren't replaced
-          if ! grep -q "docker/cagent-action@${VERSION}" review-pr/action.yml; then
+          if ! grep -q "docker/docker-agent-action@${VERSION}" review-pr/action.yml; then
             echo "::error::Failed to pin refs in review-pr/action.yml"
             exit 1
           fi
-          if ! grep -q "docker/cagent-action/review-pr@${VERSION}" .github/workflows/review-pr.yml; then
+          if ! grep -q "docker/docker-agent-action/review-pr@${VERSION}" .github/workflows/review-pr.yml; then
             echo "::error::Failed to pin refs in .github/workflows/review-pr.yml"
             exit 1
           fi
 
           echo "Pinned refs:"
-          grep -n "cagent-action@" review-pr/action.yml .github/workflows/review-pr.yml
+          grep -n "docker-agent-action@" review-pr/action.yml .github/workflows/review-pr.yml
 
           # Create a detached commit (not on main) with the pinned refs
           # Note: write-tree captures the full index (all files from HEAD),
@@ -231,7 +231,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          if ! NOTES=$(gh release view "$VERSION" --repo docker/cagent-action --json body --jq '.body'); then
+          if ! NOTES=$(gh release view "$VERSION" --repo docker/docker-agent-action --json body --jq '.body'); then
             echo "::warning::Failed to fetch release notes, using fallback"
             NOTES="Release ${VERSION} — see GitHub for details."
           fi
@@ -244,14 +244,14 @@ jobs:
         # @latest resolves to the previous release here, not the one just created.
         # This is fine — the release-notes agent doesn't change between versions.
         # GitHub Actions requires static `uses:` values, so we can't pin dynamically.
-        uses: docker/cagent-action@latest
+        uses: docker/docker-agent-action@latest
         with:
           agent: agentcatalog/github-action-release-notes
           prompt: |
             Convert these release notes to a SHORT plain text Slack message.
 
             VERSION: ${{ needs.release.outputs.version }}
-            RELEASE URL: https://github.com/docker/cagent-action/releases/tag/${{ needs.release.outputs.version }}
+            RELEASE URL: https://github.com/docker/docker-agent-action/releases/tag/${{ needs.release.outputs.version }}
 
             ORIGINAL RELEASE NOTES:
             ${{ steps.release-notes.outputs.notes }}
@@ -271,7 +271,7 @@ jobs:
             - Skip the "Platforms" line — this is a GitHub Action, not a binary
 
             EXAMPLE FORMAT:
-            :tada: cagent-action v1.3.0 Released
+            :tada: docker-agent-action v1.3.0 Released
 
             :package: WHAT'S NEW
             • New feature one
@@ -283,7 +283,7 @@ jobs:
             :bug: BUG FIXES
             • Fix description
 
-            :inbox_tray: Release: https://github.com/docker/cagent-action/releases/tag/v1.3.0
+            :inbox_tray: Release: https://github.com/docker/docker-agent-action/releases/tag/v1.3.0
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Send Slack notification
@@ -297,14 +297,14 @@ jobs:
             exit 0
           fi
 
-          RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/${VERSION}"
+          RELEASE_URL="https://github.com/docker/docker-agent-action/releases/tag/${VERSION}"
 
           # Use the AI-generated Slack summary
           if [ -f "$SLACK_SUMMARY_FILE" ] && [ -s "$SLACK_SUMMARY_FILE" ]; then
             MESSAGE_TEXT=$(cat "$SLACK_SUMMARY_FILE")
           else
             # Fallback message if summary generation failed
-            MESSAGE_TEXT=$(printf ':tada: cagent-action %s Released\n\n:package: See the full release notes for details.\n\n:inbox_tray: Release: %s' "$VERSION" "$RELEASE_URL")
+            MESSAGE_TEXT=$(printf ':tada: docker-agent-action %s Released\n\n:package: See the full release notes for details.\n\n:inbox_tray: Release: %s' "$VERSION" "$RELEASE_URL")
           fi
 
           # Create payload with text and release_url fields (matching Slack Workflow Builder webhook)

@@ -1,4 +1,4 @@
-name: "PR Review with cagent"
+name: "PR Review with Docker Agent"
 description: "AI-powered pull request review with automatic learning from feedback"
 author: "Docker"
 
@@ -451,7 +451,7 @@ runs:
     - name: Process pending feedback
       if: steps.pending-feedback.outputs.has_feedback == 'true'
       continue-on-error: true
-      uses: docker/cagent-action@latest
+      uses: docker/docker-agent-action@latest
       with:
         agent: ${{ github.action_path }}/agents/pr-review-feedback.yaml
         prompt: |
@@ -543,11 +543,11 @@ runs:
         } >> $GITHUB_OUTPUT
 
     # ========================================
-    # RUN REVIEW using root cagent-action
+    # RUN REVIEW using root docker-agent-action
     # ========================================
     - name: Run PR Review
       id: run-review
-      uses: docker/cagent-action@latest
+      uses: docker/docker-agent-action@latest
       with:
         agent: ${{ github.action_path }}/agents/pr-review.yaml
         prompt: ${{ steps.context.outputs.review_prompt }}

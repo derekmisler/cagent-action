@@ -1,5 +1,5 @@
-name: "cagent Runner"
-description: "Run a cagent AI agent with a single line"
+name: "Docker Agent Runner"
+description: "Run a Docker Agent AI agent with a single line"
 author: "Docker"
 branding:
   icon: "cpu"

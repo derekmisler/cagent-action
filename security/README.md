@@ -1,6 +1,6 @@
 # Security Documentation
 
-This directory contains security hardening scripts for the cagent-action GitHub Action.
+This directory contains security hardening scripts for the docker-agent-action GitHub Action.
 
 ## 🔒 Security Features
 
@@ -220,7 +220,7 @@ All tests must pass before deployment.
 ```yaml
 - name: Run Agent
   id: agent
-  uses: docker/cagent-action@latest
+  uses: docker/docker-agent-action@latest
   with:
     agent: my-agent
     prompt: "Analyze the logs"
