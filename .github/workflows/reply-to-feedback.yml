@@ -148,11 +148,13 @@ jobs:
         if: steps.meta.outputs.proceed == 'true'
         id: auth
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          USERNAME: ${{ steps.meta.outputs.author }}
         with:
           github-token: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }}
           script: |
             const org = 'docker';
-            const username = '${{ steps.meta.outputs.author }}';
+            const username = process.env.USERNAME;
 
             try {
               await github.rest.orgs.checkMembershipForUser({ org, username });
@@ -183,7 +185,7 @@ jobs:
         with:
           script: |
             const [owner, repo] = process.env.REPO.split('/');
-            const body = `Sorry @${process.env.AUTHOR}, conversational replies are currently available to repository collaborators only. Your feedback has still been captured and will be used to improve future reviews.\n\n<!-- cagent-review-reply -->`;
+            const body = 'Sorry @' + process.env.AUTHOR + ', conversational replies are currently available to repository collaborators only. Your feedback has still been captured and will be used to improve future reviews.\n\n<!-- cagent-review-reply -->';
             await github.rest.pulls.createReplyForReviewComment({
               owner,
               repo,
@@ -227,7 +229,7 @@ jobs:
           # Fetch all review comments on this PR and filter to this thread
           all_comments=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" | \
             jq -s --arg root_id "$ROOT_ID" \
-            '[.[][] | select((.in_reply_to_id | tostring) == $root_id)] | sort_by(.created_at)') || {
+            '[.[][] | select(.in_reply_to_id == ($root_id | tonumber))] | sort_by(.created_at)') || {
             echo "::error::Failed to fetch thread comments for PR $PR_NUMBER" >&2
             exit 1
           }
@@ -302,7 +304,7 @@ jobs:
           private_key: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }}
 
       - name: Run reply
-        if: steps.meta.outputs.proceed == 'true' && steps.auth.outputs.authorized == 'true' && steps.checkout.outcome == 'success'
+        if: steps.meta.outputs.proceed == 'true' && steps.auth.outputs.authorized == 'true' && steps.checkout.outcome == 'success' && steps.thread.outcome == 'success'
         id: run-reply
         continue-on-error: true
         uses: ./review-pr/reply
