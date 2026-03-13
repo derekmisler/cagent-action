@@ -182,6 +182,24 @@ runs:
           fi
         fi
 
+    - name: Generate file history
+      if: hashFiles('changed_files.txt') != ''
+      shell: bash
+      run: |
+        > /tmp/file_history.txt
+        while IFS= read -r file; do
+          # Skip new files (no git history)
+          HISTORY=$(git log --oneline -5 -- "$file" 2>/dev/null || true)
+          if [ -n "$HISTORY" ]; then
+            echo "## $file" >> /tmp/file_history.txt
+            echo "$HISTORY" >> /tmp/file_history.txt
+            echo "" >> /tmp/file_history.txt
+          fi
+        done < changed_files.txt
+
+        ENTRIES=$(grep -c '^## ' /tmp/file_history.txt 2>/dev/null || echo "0")
+        echo "✅ Generated history for $ENTRIES file(s)"
+
     - name: Resolve stale review threads
       continue-on-error: true
       shell: bash
