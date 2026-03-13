@@ -133,8 +133,48 @@ runs:
         EXPLICIT_TOKEN: ${{ inputs.github-token }}
         DEFAULT_TOKEN: ${{ github.token }}
 
+    - name: Check for concurrent review
+      id: review-lock
+      uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      with:
+        path: .cache/review-lock
+        key: pr-review-lock-${{ github.repository }}-${{ steps.resolve-context.outputs.pr-number }}-${{ github.run_id }}
+        restore-keys: |
+          pr-review-lock-${{ github.repository }}-${{ steps.resolve-context.outputs.pr-number }}-
+
+    - name: Evaluate review lock
+      id: lock-check
+      shell: bash
+      run: |
+        if [ "${{ steps.review-lock.outputs.cache-hit }}" = "true" ]; then
+          LOCK_TIME=$(cat .cache/review-lock/timestamp 2>/dev/null || echo "0")
+          NOW=$(date +%s)
+          AGE=$(( NOW - LOCK_TIME ))
+          if [ "$AGE" -lt 1800 ]; then  # 30 min TTL
+            echo "⏭️ Review already in progress (started ${AGE}s ago) — skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "🔓 Stale lock (${AGE}s old) — proceeding"
+        fi
+        echo "skip=false" >> $GITHUB_OUTPUT
+
+    - name: Acquire review lock
+      if: steps.lock-check.outputs.skip != 'true'
+      shell: bash
+      run: |
+        mkdir -p .cache/review-lock
+        date +%s > .cache/review-lock/timestamp
+
+    - name: Save review lock
+      if: steps.lock-check.outputs.skip != 'true'
+      uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      with:
+        path: .cache/review-lock
+        key: pr-review-lock-${{ github.repository }}-${{ steps.resolve-context.outputs.pr-number }}-${{ github.run_id }}
+
     - name: Add eyes reaction
-      if: steps.resolve-context.outputs.comment-id != ''
+      if: steps.resolve-context.outputs.comment-id != '' && steps.lock-check.outputs.skip != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
@@ -143,6 +183,7 @@ runs:
           -X POST -f content='eyes' || true
 
     - name: Get PR information
+      if: steps.lock-check.outputs.skip != 'true'
       id: pr-info
       shell: bash
       env:
@@ -182,7 +223,150 @@ runs:
           fi
         fi
 
+    - name: Split diff into chunks
+      if: hashFiles('pr.diff') != ''
+      id: chunk-diff
+      shell: bash
+      run: |
+        TOTAL_LINES=$(wc -l < pr.diff | tr -d ' ')
+        echo "📄 Diff is $TOTAL_LINES lines"
+
+        if [ "$TOTAL_LINES" -le 1500 ]; then
+          # Small diff — single chunk
+          cp pr.diff /tmp/drafter_chunk_1.diff
+          echo "chunk_count=1" >> $GITHUB_OUTPUT
+          # Build manifest: list all files in the diff
+          FILES=$(grep '^diff --git' pr.diff | sed 's|diff --git a/.* b/||' | jq -R . | jq -s '.')
+          echo "chunk_manifest=$(jq -nc --argjson f "$FILES" '{"1": $f}')" >> $GITHUB_OUTPUT
+          echo "✅ Single chunk ($TOTAL_LINES lines)"
+        else
+          # Large diff — split at file boundaries, targeting ~1000 lines per chunk
+          CHUNK=1
+          CHUNK_LINES=0
+          CURRENT_FILE=""
+          CURRENT_DIR=""
+          MANIFEST="{}"
+          CHUNK_FILES="[]"
+
+          # Create first chunk file
+          > /tmp/drafter_chunk_1.diff
+
+          while IFS= read -r line; do
+            if [[ "$line" == "diff --git"* ]]; then
+              FILE=$(echo "$line" | sed 's|diff --git a/.* b/||')
+              DIR=$(dirname "$FILE")
+
+              # Start new chunk if current chunk exceeds target and directory changed
+              if [ "$CHUNK_LINES" -gt 1000 ] && [ "$DIR" != "$CURRENT_DIR" ]; then
+                # Save current chunk's file list to manifest
+                MANIFEST=$(echo "$MANIFEST" | jq --argjson files "$CHUNK_FILES" --arg k "$CHUNK" '.[$k] = $files')
+                CHUNK=$((CHUNK + 1))
+                CHUNK_LINES=0
+                CHUNK_FILES="[]"
+                > /tmp/drafter_chunk_${CHUNK}.diff
+              fi
+
+              CURRENT_FILE="$FILE"
+              CURRENT_DIR="$DIR"
+              CHUNK_FILES=$(echo "$CHUNK_FILES" | jq --arg f "$FILE" '. += [$f]')
+            fi
+
+            echo "$line" >> /tmp/drafter_chunk_${CHUNK}.diff
+            CHUNK_LINES=$((CHUNK_LINES + 1))
+          done < pr.diff
+
+          # Save final chunk's file list
+          MANIFEST=$(echo "$MANIFEST" | jq --argjson files "$CHUNK_FILES" --arg k "$CHUNK" '.[$k] = $files')
+
+          echo "chunk_count=$CHUNK" >> $GITHUB_OUTPUT
+          echo "chunk_manifest=$(echo "$MANIFEST" | jq -c .)" >> $GITHUB_OUTPUT
+          echo "✅ Split into $CHUNK chunks (target ~1000 lines each)"
+
+          for i in $(seq 1 $CHUNK); do
+            LINES=$(wc -l < /tmp/drafter_chunk_${i}.diff | tr -d ' ')
+            FILES_IN_CHUNK=$(echo "$MANIFEST" | jq -r --arg k "$i" '.[$k] | length')
+            echo "  Chunk $i: $LINES lines, $FILES_IN_CHUNK files"
+          done
+        fi
+
+    - name: Score file risk
+      if: steps.lock-check.outputs.skip != 'true' && hashFiles('pr.diff') != ''
+      shell: bash
+      run: |
+        # Extract per-file diff stats (added lines, hunk count)
+        awk '
+        /^diff --git/ {
+          if (file != "") print file, added, hunks
+          file = $0; sub(/.*b\//, "", file)
+          added = 0; hunks = 0
+        }
+        /^@@/ { hunks++ }
+        /^\+[^+]/ { added++ }
+        END { if (file != "") print file, added, hunks }
+        ' pr.diff > /tmp/file_diff_stats.txt
+
+        # Build final scores
+        jq -n '{}' > /tmp/file_risk_scores.json
+        while read -r file added hunks; do
+          SCORE=0
+
+          # Security-sensitive paths: +2
+          if echo "$file" | grep -qiE 'auth|security|crypto|session|secret|token|password|credential'; then
+            SCORE=$((SCORE + 2))
+          fi
+
+          # Large change (>100 added lines): +2
+          if [ "$added" -gt 100 ]; then
+            SCORE=$((SCORE + 2))
+          fi
+
+          # Many hunks (>3): +1
+          if [ "$hunks" -gt 3 ]; then
+            SCORE=$((SCORE + 1))
+          fi
+
+          # Test/doc/config files: score = 0
+          if echo "$file" | grep -qiE '_test\.go$|\.test\.[tj]sx?$|\.spec\.[tj]sx?$|test_.*\.py$|\.md$|\.ya?ml$|\.json$|\.toml$'; then
+            SCORE=0
+          fi
+
+          # Error handling patterns in diff for this file: +1
+          ERROR_LINES=$(awk -v f="$file" '
+            /^diff --git/ { cur=$0; sub(/.*b\//, "", cur) }
+            cur == f && /^\+[^+]/ && /catch|rescue|except|recover|error|panic/ { count++ }
+            END { print count+0 }
+          ' pr.diff)
+          if [ "$ERROR_LINES" -gt 0 ]; then
+            SCORE=$((SCORE + 1))
+          fi
+
+          jq --arg f "$file" --argjson s "$SCORE" '.[$f] = $s' /tmp/file_risk_scores.json > /tmp/file_risk_scores.tmp \
+            && mv /tmp/file_risk_scores.tmp /tmp/file_risk_scores.json
+        done < /tmp/file_diff_stats.txt
+
+        rm -f /tmp/file_diff_stats.txt
+        echo "✅ File risk scores: $(jq -c . /tmp/file_risk_scores.json)"
+
+    - name: Generate file history
+      if: steps.lock-check.outputs.skip != 'true' && hashFiles('changed_files.txt') != ''
+      shell: bash
+      run: |
+        > /tmp/file_history.txt
+        while IFS= read -r file; do
+          # Skip new files (no git history)
+          HISTORY=$(git log --oneline -5 -- "$file" 2>/dev/null || true)
+          if [ -n "$HISTORY" ]; then
+            echo "## $file" >> /tmp/file_history.txt
+            echo "$HISTORY" >> /tmp/file_history.txt
+            echo "" >> /tmp/file_history.txt
+          fi
+        done < changed_files.txt
+
+        ENTRIES=$(grep -c '^## ' /tmp/file_history.txt 2>/dev/null || echo "0")
+        echo "✅ Generated history for $ENTRIES file(s)"
+
     - name: Resolve stale review threads
+      if: steps.lock-check.outputs.skip != 'true'
       continue-on-error: true
       shell: bash
       env:
@@ -381,10 +565,12 @@ runs:
         echo "📋 Summary: Resolved $RESOLVED thread(s), kept $KEPT thread(s) open"
 
     - name: Ensure cache directory exists
+      if: steps.lock-check.outputs.skip != 'true'
       shell: bash
       run: mkdir -p "${{ github.workspace }}/.cache"
 
     - name: Restore reviewer memory
+      if: steps.lock-check.outputs.skip != 'true'
       id: restore-memory
       uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
       with:
@@ -400,6 +586,7 @@ runs:
     # and processes them into memory before the review runs.
     # ========================================
     - name: Collect pending feedback
+      if: steps.lock-check.outputs.skip != 'true'
       id: pending-feedback
       continue-on-error: true
       shell: bash
@@ -413,6 +600,13 @@ runs:
           echo "has_feedback=false" >> $GITHUB_OUTPUT
           echo "ℹ️  No pending feedback to process"
           exit 0
+        fi
+
+        # Cap at 10 most recent artifacts to avoid processing too many in one shot
+        ARTIFACT_COUNT=$(echo "$ARTIFACTS" | wc -w | tr -d ' ')
+        if [ "$ARTIFACT_COUNT" -gt 10 ]; then
+          echo "⚠️ Processing 10 of $ARTIFACT_COUNT pending feedback items (rest will be processed on next run)"
+          ARTIFACTS=$(echo "$ARTIFACTS" | sort -rn | head -10)
         fi
 
         mkdir -p pending_feedback
@@ -453,7 +647,7 @@ runs:
         fi
 
     - name: Process pending feedback
-      if: steps.pending-feedback.outputs.has_feedback == 'true'
+      if: steps.lock-check.outputs.skip != 'true' && steps.pending-feedback.outputs.has_feedback == 'true'
       continue-on-error: true
       uses: docker/cagent-action@latest
       with:
@@ -485,6 +679,7 @@ runs:
     # BUILD REVIEW CONTEXT
     # ========================================
     - name: Build review context
+      if: steps.lock-check.outputs.skip != 'true'
       id: context
       shell: bash
       env:
@@ -552,6 +747,7 @@ runs:
     # RUN REVIEW using root cagent-action
     # ========================================
     - name: Run PR Review
+      if: steps.lock-check.outputs.skip != 'true'
       id: run-review
       uses: docker/cagent-action@latest
       with:
