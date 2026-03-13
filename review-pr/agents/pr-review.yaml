@@ -114,11 +114,19 @@ agents:
          Project context (from AGENTS.md):
          <contents of AGENTS.md, or "No AGENTS.md found" if absent>
 
+         File history (recent commits):
+         <contents of /tmp/file_history.txt, or "No file history available" if absent>
+
          Learned patterns: <any relevant memories>
          ```
 
          The drafter has `read_file` access and will read the chunk from disk. Keep the
-         delegation message short — just the file path, chunk number, project context, and any learned patterns.
+         delegation message short — just the file path, chunk number, project context,
+         file history, and any learned patterns.
+
+         If `/tmp/file_history.txt` exists, read it and include relevant entries for the
+         files in the current chunk. This helps the drafter understand what kinds of bugs
+         this code has had before.
 
          **Include a file listing** so the drafter knows what files exist on disk. Before
          delegating, run:
@@ -292,6 +300,10 @@ agents:
 
       You also have `read_file` access for reading full source files when analyzing findings
       (e.g., to check imports, surrounding code, or related functions).
+
+      The orchestrator may provide recent git commit history for changed files. Use this to
+      understand what kinds of bugs this code has had before and what areas are actively
+      being fixed.
 
       ## REQUIRED: Verify Before Reporting
 
