@@ -162,6 +162,8 @@ runs:
           if [ "$AGE" -lt 2500 ]; then  # ~42 min TTL (slightly longer than the 40-min review timeout)
             echo "⏭️ Review already in progress (started ${AGE}s ago) — skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip-reason=concurrent" >> $GITHUB_OUTPUT
+            echo "lock-age=${AGE}" >> $GITHUB_OUTPUT
             exit 0
           fi
           echo "🔓 Stale lock (${AGE}s old) — proceeding"
@@ -819,11 +821,23 @@ runs:
         EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         VERBOSE_LOG_FILE: ${{ steps.run-review.outputs.verbose-log-file }}
+        SKIP_REASON: ${{ steps.lock-check.outputs.skip-reason }}
+        LOCK_AGE: ${{ steps.lock-check.outputs.lock-age }}
       run: |
         REVIEW_URL="https://github.com/$REPOSITORY/pull/$PR_NUMBER"
         echo "review-url=$REVIEW_URL" >> $GITHUB_OUTPUT
 
-        if [ "$EXIT_CODE" != "0" ]; then
+        if [ "$SKIP_REASON" = "concurrent" ]; then
+          STATUS="⏭️ **Review skipped** — another review is already in progress"
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="⏭️ **Review skipped** — another review for this PR is already in progress (started ${LOCK_AGE}s ago). Only one review runs at a time to avoid duplicate comments. The in-progress review will post its results when complete." \
+            2>&1 || {
+              echo "::warning::Failed to post skip comment to PR"
+              STATUS="${STATUS} (⚠️ failed to notify on PR)"
+            }
+        elif [ -z "$EXIT_CODE" ]; then
+          STATUS="⏭️ **Review skipped** — agent did not run"
+        elif [ "$EXIT_CODE" != "0" ]; then
           # Check if agent actually posted a review despite the error exit code.
           # This happens when a sub-agent fails (e.g., API overload) but the root
           # agent recovers and posts the review itself.
@@ -855,7 +869,7 @@ runs:
         } >> $GITHUB_STEP_SUMMARY
 
     - name: Add completion reaction
-      if: steps.resolve-context.outputs.comment-id != '' && always()
+      if: steps.resolve-context.outputs.comment-id != '' && always() && steps.lock-check.outputs.skip != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
