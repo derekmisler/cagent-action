@@ -12,7 +12,7 @@
 #
 #   jobs:
 #     review:
-#       uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
+#       uses: derekmisler/cagent-action/.github/workflows/review-pr.yml@latest
 #       # Scoped to the job so other jobs in this workflow aren't over-permissioned
 #       permissions:
 #         contents: read       # Read repository files and PR diffs
@@ -176,7 +176,7 @@ jobs:
         if: steps.membership.outputs.is_member == 'true'
         id: run-review
         continue-on-error: true # Don't fail the calling workflow if the review errors
-        uses: docker/cagent-action/review-pr@testing-the-new-gha-reviewer-tue-mar-17-093113-e
+        uses: derekmisler/cagent-action/review-pr@testing-the-new-gha-reviewer-tue-mar-17-093113-e
         with:
           pr-number: ${{ inputs.pr-number || github.event.pull_request.number }}
           additional-prompt: ${{ inputs.additional-prompt }}
@@ -256,7 +256,7 @@ jobs:
       - name: Run PR Review
         id: run-review
         continue-on-error: true # Don't fail the calling workflow if the review errors
-        uses: docker/cagent-action/review-pr@testing-the-new-gha-reviewer-tue-mar-17-093113-e
+        uses: derekmisler/cagent-action/review-pr@testing-the-new-gha-reviewer-tue-mar-17-093113-e
         with:
           pr-number: ${{ inputs.pr-number || github.event.issue.number }}
           comment-id: ${{ inputs.comment-id || github.event.comment.id }}
@@ -567,7 +567,7 @@ jobs:
       - name: Run reply
         if: steps.check.outputs.is_agent == 'true' && steps.auth.outputs.authorized == 'true'
         continue-on-error: true
-        uses: docker/cagent-action/review-pr/reply@testing-the-new-gha-reviewer-tue-mar-17-093113-e
+        uses: derekmisler/cagent-action/review-pr/reply@testing-the-new-gha-reviewer-tue-mar-17-093113-e
         with:
           thread-context: ${{ steps.thread.outputs.prompt }}
           comment-id: ${{ github.event.comment.id }}

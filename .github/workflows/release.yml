@@ -90,17 +90,17 @@ jobs:
           set -e
           echo "Pinning @latest refs to ${VERSION}..."
 
-          # Pin all docker/cagent-action*@latest refs -> @vX.Y.Z
+          # Pin all derekmisler/cagent-action*@latest refs -> @vX.Y.Z
           # Uses a capture group so any sub-path (e.g., /review-pr, /review-pr/reply) is preserved.
           # Automatically covers new sub-actions without needing to update this workflow.
           # Only targets `uses:` lines to avoid pinning refs in comments or documentation.
-          PIN_PATTERN='s|^\([^#]*uses: *docker/cagent-action\)\([^@]*\)@latest|\1\2@'"${VERSION}"'|g'
+          PIN_PATTERN='s|^\([^#]*uses: *derekmisler/cagent-action\)\([^@]*\)@latest|\1\2@'"${VERSION}"'|g'
           PINNED_FILES=()
           while IFS= read -r file; do
             sed -i "$PIN_PATTERN" "$file"
             PINNED_FILES+=("$file")
             echo "  Pinned: $file"
-          done < <(grep -rl 'uses: *docker/cagent-action[^@]*@latest' --include='*.yml' --include='*.yaml' \
+          done < <(grep -rl 'uses: *derekmisler/cagent-action[^@]*@latest' --include='*.yml' --include='*.yaml' \
             --exclude-dir=.git \
             review-pr/ .github/workflows/review-pr.yml)
 
@@ -110,7 +110,7 @@ jobs:
           fi
 
           # Verify no @latest uses: refs remain in pinned files
-          REMAINING=$(grep -n '^[^#]*uses: *docker/cagent-action[^@]*@latest' "${PINNED_FILES[@]}" 2>/dev/null || true)
+          REMAINING=$(grep -n '^[^#]*uses: *derekmisler/cagent-action[^@]*@latest' "${PINNED_FILES[@]}" 2>/dev/null || true)
           if [ -n "$REMAINING" ]; then
             echo "::error::Unpinned @latest refs remain after release:"
             echo "$REMAINING"
@@ -221,7 +221,7 @@ jobs:
           SHA: ${{ needs.release.outputs.sha }}
         run: |
           BRANCH="auto/update-cagent-action"
-          RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/$VERSION"
+          RELEASE_URL="https://github.com/derekmisler/cagent-action/releases/tag/$VERSION"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -342,7 +342,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          if ! NOTES=$(gh release view "$VERSION" --repo docker/cagent-action --json body --jq '.body'); then
+          if ! NOTES=$(gh release view "$VERSION" --repo derekmisler/cagent-action --json body --jq '.body'); then
             echo "::warning::Failed to fetch release notes, using fallback"
             NOTES="Release ${VERSION} — see GitHub for details."
           fi
@@ -355,14 +355,14 @@ jobs:
         # @latest resolves to the previous release here, not the one just created.
         # This is fine — the release-notes agent doesn't change between versions.
         # GitHub Actions requires static `uses:` values, so we can't pin dynamically.
-        uses: docker/cagent-action@latest
+        uses: derekmisler/cagent-action@latest
         with:
           agent: agentcatalog/github-action-release-notes
           prompt: |
             Convert these release notes to a SHORT plain text Slack message.
 
             VERSION: ${{ needs.release.outputs.version }}
-            RELEASE URL: https://github.com/docker/cagent-action/releases/tag/${{ needs.release.outputs.version }}
+            RELEASE URL: https://github.com/derekmisler/cagent-action/releases/tag/${{ needs.release.outputs.version }}
 
             ORIGINAL RELEASE NOTES:
             ${{ steps.release-notes.outputs.notes }}
@@ -394,7 +394,7 @@ jobs:
             :bug: BUG FIXES
             • Fix description
 
-            :inbox_tray: Release: https://github.com/docker/cagent-action/releases/tag/v1.3.0
+            :inbox_tray: Release: https://github.com/derekmisler/cagent-action/releases/tag/v1.3.0
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Send Slack notification
@@ -408,7 +408,7 @@ jobs:
             exit 0
           fi
 
-          RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/${VERSION}"
+          RELEASE_URL="https://github.com/derekmisler/cagent-action/releases/tag/${VERSION}"
 
           # Use the AI-generated Slack summary
           if [ -f "$SLACK_SUMMARY_FILE" ] && [ -s "$SLACK_SUMMARY_FILE" ]; then
