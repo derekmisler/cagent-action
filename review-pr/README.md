@@ -9,32 +9,42 @@ AI-powered pull request review using a multi-agent system. Analyzes code changes
 Add `.github/workflows/pr-review.yml` to your repo with this **minimal but safe setup**:
 
 ```yaml
+# Thin wrapper around docker/cagent-action's reusable review workflow.
+# Fork detection, org-membership gating, and review posting are all handled
+# by the reusable workflow, so no additional guards are needed here.
+#
+# Triggers:
+#   pull_request                — auto-review on open / ready-for-review.
+#                                 Fork PRs fire but secrets are withheld by GitHub;
+#                                 the reusable workflow exits early with neutral status.
+#   issue_comment               — `/review` slash command (works for fork contributors).
+#   pull_request_review_comment — captures feedback for agent learning.
 name: PR Review
+
 on:
-  issue_comment:               # Enables /review command in PR comments
+  issue_comment:
     types: [created]
-  pull_request_review_comment: # Captures feedback on review comments for learning
+  pull_request_review_comment:
     types: [created]
-  pull_request:                # Triggers auto-review on PR open (same-repo branches only; fork PRs use /review)
-    types: [ready_for_review, opened]
+  pull_request:
+    types: [ready_for_review, opened] # Optionally, add `synchronize` to run the reviewer on every push to a PR.
 
 permissions:
-  contents: read # Required at top-level to give `issue_comment` events access to the secrets below.
+  contents: read
 
 jobs:
   review:
-    uses: docker/cagent-action/.github/workflows/review-pr.yml@latest
-    # Scoped to the job so other jobs in this workflow aren't over-permissioned
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@dba0ca51938c78afb363625363c50582243218d6 # v1.3.1
     permissions:
-      contents: read       # Read repository files and PR diffs
-      pull-requests: write # Post review comments and approve/request changes
-      issues: write        # Create security incident issues if secrets are detected in output
-      checks: write        # (Optional) Show review progress as a check run on the PR
+      contents: read # Read repo files and PR diffs
+      pull-requests: write # Post review comments, approve / request changes
+      issues: write # Create security-incident issues if secrets leak into output
+      checks: write # Show review progress as a check run on the PR
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }}         # PAT with read:org scope; gates auto-reviews to org members only
-      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }}                   # GitHub App ID; reviews appear as your app instead of github-actions[bot]
-      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }} # GitHub App private key; paired with App ID above
+      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }}
+      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
+      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }}
 ```
 
 > **Note:** Auto-review runs on same-repo branches only — fork PRs are automatically skipped (secrets aren't available). For fork PRs, an org member can comment `/review` to trigger a review.
@@ -53,11 +63,11 @@ with:
 
 The workflow automatically handles:
 
-| Trigger                 | Behavior                                                                                |
-| ----------------------- | --------------------------------------------------------------------------------------- |
+| Trigger                 | Behavior                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
 | PR opened/ready         | Auto-reviews PRs from your org members (same-repo branches only; fork PRs use `/review`) |
-| `/review` comment       | Manual review on any PR (shows as a check run on the PR if `checks: write` is granted)  |
-| Reply to review comment | Responds in-thread and learns from feedback to improve future reviews                   |
+| `/review` comment       | Manual review on any PR (shows as a check run on the PR if `checks: write` is granted)   |
+| Reply to review comment | Responds in-thread and learns from feedback to improve future reviews                    |
 
 ---
 
@@ -71,6 +81,7 @@ docker agent run agentcatalog/review-pr "Review my changes"
 ```
 
 The agent automatically:
+
 - Pulls the latest version from Docker Hub
 - Reads `AGENTS.md` or `CLAUDE.md` from your repo root for project-specific context (language versions, conventions, etc.)
 - Diffs your current branch against the base branch
@@ -134,7 +145,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  checks: write         # Optional: show review progress as a check run
+  checks: write # Optional: show review progress as a check run
 
 jobs:
   review:
@@ -245,14 +256,14 @@ Override for more thorough or cost-effective reviews:
 
 When using `docker/cagent-action/.github/workflows/review-pr.yml`:
 
-| Input               | Description                                         | Default   |
-| ------------------- | --------------------------------------------------- | --------- |
-| `pr-number`         | PR number (auto-detected from event)                | -         |
-| `comment-id`        | Comment ID for reactions (auto-detected)            | -         |
-| `additional-prompt` | Additional review guidelines                        | -         |
-| `model`             | Model override (e.g., `anthropic/claude-haiku-4-5`) | -         |
-| `add-prompt-files`  | Comma-separated files to append to the prompt       | -         |
-| `auto-review-org`   | Organization for auto-review membership check       | `docker`  |
+| Input               | Description                                         | Default  |
+| ------------------- | --------------------------------------------------- | -------- |
+| `pr-number`         | PR number (auto-detected from event)                | -        |
+| `comment-id`        | Comment ID for reactions (auto-detected)            | -        |
+| `additional-prompt` | Additional review guidelines                        | -        |
+| `model`             | Model override (e.g., `anthropic/claude-haiku-4-5`) | -        |
+| `add-prompt-files`  | Comma-separated files to append to the prompt       | -        |
+| `auto-review-org`   | Organization for auto-review membership check       | `docker` |
 
 ### `review-pr` (Composite Action)
 
@@ -354,6 +365,7 @@ AGENTS.md + PR Diff → Drafter (hypotheses) → Verifier (confirm) → Post Com
 When you reply to a review comment, two things happen in parallel:
 
 **Synchronous reply** (`reply-to-feedback` job):
+
 1. Checks if the reply is to an agent comment (via `<!-- cagent-review -->` marker)
 2. Verifies the author is an org member/collaborator (authorization gate)
 3. Builds the full thread context (original comment + all replies in chronological order)
@@ -361,6 +373,7 @@ When you reply to a review comment, two things happen in parallel:
 5. The agent also stores learnings in the memory database for future reviews
 
 **Async artifact capture** (`capture-feedback` job):
+
 1. Saves the feedback as a GitHub Actions artifact (no secrets required)
 2. On the next review run, pending feedback artifacts are downloaded and processed into the memory database
 3. Acts as a resilient fallback if the reply agent fails or isn't configured
@@ -404,9 +417,9 @@ Each eval file in `review-pr/agents/evals/` contains:
 
 ### Eval naming conventions
 
-| Prefix | Expected outcome |
-| --- | --- |
-| `success-*` | Clean PR, agent should APPROVE |
+| Prefix       | Expected outcome                                                   |
+| ------------ | ------------------------------------------------------------------ |
+| `success-*`  | Clean PR, agent should APPROVE                                     |
 | `security-*` | PR with security concerns, agent should COMMENT or REQUEST_CHANGES |
 
 ### Writing new evals
