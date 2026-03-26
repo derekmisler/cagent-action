@@ -32,8 +32,6 @@ jobs:
       issues: write
       actions: read
       id-token: write
-    env:
-      HAS_APP_SECRETS: 'true'
 
     steps:
       - name: Configure AWS credentials
@@ -332,7 +330,7 @@ jobs:
           ref: refs/pull/${{ steps.meta.outputs.pr_number }}/head
 
       - name: Generate GitHub App token
-        if: steps.meta.outputs.proceed == 'true' && steps.auth.outputs.authorized == 'true' && env.HAS_APP_SECRETS == 'true'
+        if: steps.meta.outputs.proceed == 'true' && steps.auth.outputs.authorized == 'true'
         id: app-token
         continue-on-error: true
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2

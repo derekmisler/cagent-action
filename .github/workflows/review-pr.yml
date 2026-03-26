@@ -129,8 +129,6 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    env:
-      HAS_APP_SECRETS: 'true'
     outputs:
       exit-code: ${{ steps.run-review.outputs.exit-code }}
 
@@ -245,7 +243,7 @@ jobs:
 
       # Generate GitHub App token for custom app identity (optional - falls back to github.token)
       - name: Generate GitHub App token
-        if: steps.membership.outputs.is_member == 'true' && env.HAS_APP_SECRETS == 'true'
+        if: steps.membership.outputs.is_member == 'true'
         id: app-token
         continue-on-error: true # Don't fail workflow if token generation fails
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
@@ -288,8 +286,6 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    env:
-      HAS_APP_SECRETS: 'true'
     outputs:
       exit-code: ${{ steps.run-review.outputs.exit-code }}
 
@@ -361,7 +357,7 @@ jobs:
       # Generate GitHub App token first so the check run is created under the app's identity
       # (prevents GitHub from nesting it under unrelated pull_request-triggered workflows)
       - name: Generate GitHub App token
-        if: steps.membership.outputs.is_member == 'true' && env.HAS_APP_SECRETS == 'true'
+        if: steps.membership.outputs.is_member == 'true'
         id: app-token
         continue-on-error: true # Don't fail workflow if token generation fails
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
@@ -518,8 +514,6 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    env:
-      HAS_APP_SECRETS: 'true'
 
     steps:
       - name: Configure AWS credentials
@@ -769,7 +763,7 @@ jobs:
 
       # Generate GitHub App token for custom app identity (optional - falls back to github.token)
       - name: Generate GitHub App token
-        if: steps.check.outputs.is_agent == 'true' && steps.auth.outputs.authorized == 'true' && env.HAS_APP_SECRETS == 'true'
+        if: steps.check.outputs.is_agent == 'true' && steps.auth.outputs.authorized == 'true'
         id: app-token
         continue-on-error: true
         uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2
