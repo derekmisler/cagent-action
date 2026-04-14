@@ -19,26 +19,19 @@ jobs:
   security-scan:
     name: Security Scan with Docker Agent
     runs-on: ubuntu-latest
-    env:
-      HAS_APP_SECRETS: ${{ secrets.CAGENT_REVIEWER_APP_ID != '' }}
     permissions:
       contents: read
       issues: write
+      id-token: write
     steps:
       - name: Check out Git repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0 # Need full history to get commits from past week
 
-      # Generate GitHub App token so issues appear as the custom app (optional - falls back to github.token)
-      - name: Get GitHub App token
-        id: app-token
-        if: env.HAS_APP_SECRETS == 'true'
-        continue-on-error: true  # Don't fail workflow if token generation fails
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        with:
-          app-id: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
-          private-key: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }}
+      - name: Setup credentials
+        uses: docker/cagent-action/.github/actions/setup-credentials@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+
 
       - name: Get commits from past week
         id: commits
@@ -121,11 +114,11 @@ jobs:
       - name: Run security scan
         id: scan
         if: steps.commits.outputs.has_commits == 'true'
-        uses: ./
+        uses: docker/cagent-action@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
         with:
           agent: agentcatalog/github-action-security-scanner
           prompt: ${{ steps.commits.outputs.prompt }}
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ env.ANTHROPIC_API_KEY_FROM_SSM || secrets.ANTHROPIC_API_KEY }}
           timeout: 300 # 5 minutes
 
       - name: Validate reported file paths
@@ -246,7 +239,7 @@ jobs:
       - name: Create security issue
         if: steps.check-issues.outputs.has_issues == 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
           OUTPUT_FILE: ${{ steps.scan.outputs.output-file }}
           COMMIT_COUNT: ${{ steps.commits.outputs.commit_count }}
           DAYS_BACK: ${{ inputs.days_back || '7' }}

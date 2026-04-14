@@ -1,10 +1,14 @@
 # Dependencies
 node_modules/
 
-# Build outputs
+# Build output (rebuilt automatically by the build workflow)
 dist/
+.github/actions/setup-credentials/dist/
+*.js.map
+licenses.txt
 
 # Testing
+coverage/
 .env
 .env.local
 

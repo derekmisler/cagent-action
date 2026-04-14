@@ -36,50 +36,6 @@ See [security/README.md](security/README.md) for complete security documentation
 
 ## Usage
 
-### AI-Powered PR Reviews
-
-For automated pull request reviews with a multi-agent system, see the [PR Review workflow documentation](review-pr/README.md). The workflow supports:
-
-- Automatic reviews when PRs are opened
-- Manual `/review` command in PR comments
-- Learning from feedback to improve future reviews
-- Customizable review guidelines per language/project
-
-**Quick setup:** Add a workflow file that calls our reusable workflow:
-
-```yaml
-name: PR Review
-on:
-  issue_comment: # Enables /review command in PR comments
-    types: [created]
-  pull_request_review_comment: # Captures feedback on review comments for learning
-    types: [created]
-  pull_request: # Triggers auto-review on PR open (same-repo branches only; fork PRs use /review)
-    types: [ready_for_review, opened]
-
-permissions:
-  contents: read # Required at top-level to give `issue_comment` events access to the secrets below.
-
-jobs:
-  review:
-    uses: docker/cagent-action/.github/workflows/review-pr.yml@VERSION
-    # Scoped to the job so other jobs in this workflow aren't over-permissioned
-    permissions:
-      contents: read # Read repository files and PR diffs
-      pull-requests: write # Post review comments and approve/request changes
-      issues: write # Create security incident issues if secrets are detected in output
-      checks: write # (Optional) Show review progress as a check run on the PR
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      CAGENT_ORG_MEMBERSHIP_TOKEN: ${{ secrets.CAGENT_ORG_MEMBERSHIP_TOKEN }} # PAT with read:org scope; gates auto-reviews to org members only
-      CAGENT_REVIEWER_APP_ID: ${{ secrets.CAGENT_REVIEWER_APP_ID }} # GitHub App ID; reviews appear as your app instead of github-actions[bot]
-      CAGENT_REVIEWER_APP_PRIVATE_KEY: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }} # GitHub App private key; paired with App ID above
-```
-
-> **Note:** Auto-review runs on same-repo branches only — fork PRs are automatically skipped (secrets aren't available). For fork PRs, an org member can comment `/review` to trigger a review.
-
-See the [full PR Review documentation](review-pr/README.md) for more details.
-
 ### Using a Local Agent File
 
 ```yaml
@@ -167,8 +123,6 @@ See the [full PR Review documentation](review-pr/README.md) for more details.
 
 The `add-prompt-files` input allows you to include additional context files as system messages. This uses Docker Agent's `--prompt-file` flag under the hood.
 
-> **Note:** The `review-pr` action automatically reads `AGENTS.md` and `CLAUDE.md` from the repository root — you don't need to specify them via `add-prompt-files`. Use this input for additional files beyond those defaults.
-
 **File Resolution (handled by Docker Agent):**
 
 - Searches up the directory hierarchy (like `.gitignore`)
@@ -218,10 +172,11 @@ For GitHub integration features (commenting on PRs, creating issues), ensure you
 
 ```yaml
 permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  checks: write # Optional: show review progress as a check run on PRs
+  contents: read # Read repository files and PR diffs
+  pull-requests: write # Post review comments and approve/request changes
+  issues: write # Create security incident issues if secrets are detected in output
+  checks: write # (Optional) Show review progress as a check run on the PR
+  id-token: write # Required for OIDC authentication to AWS Secrets Manager
 ```
 
 ## Examples
