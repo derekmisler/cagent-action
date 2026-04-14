@@ -7,6 +7,12 @@ import nodeExternals from 'rollup-plugin-node-externals';
 /** @type {import('rollup').RollupOptions} */
 export default {
   input: 'src/index.ts',
+  // Suppress harmless warnings from third-party CJS/ESM code
+  onwarn(warning, defaultHandler) {
+    if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+    if (warning.code === 'THIS_IS_UNDEFINED') return;
+    defaultHandler(warning);
+  },
   output: {
     file: '.github/actions/setup-credentials/dist/setup-credentials.js',
     format: 'esm',

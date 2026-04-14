@@ -1,15 +1,21 @@
 import * as core from '@actions/core';
-import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchGitHubAppCredentials } from '../github-app.js';
 
 vi.mock('@actions/core');
-vi.mock('@aws-sdk/client-secrets-manager');
 
-const mockSend = vi.fn();
-vi.mocked(SecretsManagerClient).mockImplementation(
-  () => ({ send: mockSend }) as unknown as SecretsManagerClient,
-);
+const { mockSend, MockSecretsManagerClient } = vi.hoisted(() => {
+  const mockSend = vi.fn();
+  class MockSecretsManagerClient {
+    send = mockSend;
+  }
+  return { mockSend, MockSecretsManagerClient };
+});
+
+vi.mock('@aws-sdk/client-secrets-manager', () => ({
+  SecretsManagerClient: MockSecretsManagerClient,
+  GetSecretValueCommand: vi.fn(),
+}));
 
 const VALID_SECRET = JSON.stringify({
   app_id: 'test-app-id',

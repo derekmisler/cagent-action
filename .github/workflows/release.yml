@@ -117,19 +117,35 @@ jobs:
         run: |
           set -e
 
-          # Capture HEAD SHA before creating the detached commit.
-          # The release commit's self-refs will point to this SHA (the parent on main),
-          # which has an identical root action.yml.
-          HEAD_SHA=$(git rev-parse HEAD)
-          echo "Pinning SHA refs to ${HEAD_SHA} # ${VERSION}..."
+          # ── Pass 1 ──────────────────────────────────────────────────────────
+          # Stage the compiled dist/ output (gitignored on main) so it is
+          # included in the tree BEFORE we resolve which SHA to pin refs to.
+          # The commit produced here (TEMP_SHA) is what consumers will resolve
+          # when they fetch sub-actions like setup-credentials — dist/ must
+          # exist at that SHA or they will fail.
+          echo "Pass 1: staging dist/ and creating temp commit..."
+          if [ ! -d .github/actions/setup-credentials/dist ] || [ -z "$(ls -A .github/actions/setup-credentials/dist)" ]; then
+            echo "::error::dist/ directory is missing or empty — build may have failed"
+            exit 1
+          fi
+          git add -f .github/actions/setup-credentials/dist/
+          TREE1=$(git write-tree)
+          TEMP_SHA=$(git commit-tree "$TREE1" -p HEAD -m "release(temp): stage dist/ for ${VERSION}")
+          echo "TEMP_SHA=${TEMP_SHA}"
 
-          # Replace all docker/cagent-action*@<40-hex-SHA> # v<anything> refs
-          # with the current HEAD SHA and new version.
+          # ── Pass 2 ──────────────────────────────────────────────────────────
+          # Now pin all self-refs to TEMP_SHA (not HEAD). This ensures that
+          # consumers following the pinned SHA land on a commit where dist/
+          # already exists (produced in Pass 1 above).
+          echo "Pass 2: pinning refs to ${TEMP_SHA} # ${VERSION}..."
+
+          # Replace all docker/cagent-action*@<any-ref> refs (SHA, tag, branch, SHA+comment)
+          # with TEMP_SHA and the new version.
           # Uses a capture group so any sub-path (e.g., /review-pr, /review-pr/reply) is preserved.
           # Automatically covers new sub-actions without needing to update this workflow.
           # Only targets `uses:` lines to avoid pinning refs in comments or documentation.
-          OLD_PIN_PATTERN='uses: *docker/cagent-action[^@]*@[a-f0-9]\{40\} # v'
-          PIN_PATTERN='s|^\([^#]*uses: *docker/cagent-action\)\([^@]*\)@[a-f0-9]\{40\} # v[^ ]*|\1\2@'"${HEAD_SHA}"' # '"${VERSION}"'|g'
+          OLD_PIN_PATTERN='uses: *docker/cagent-action[^@]*@'
+          PIN_PATTERN='s|^\([^#]*uses: *docker/cagent-action\)\([^@]*\)@.*|\1\2@'"${TEMP_SHA}"' # '"${VERSION}"'|g'
           PINNED_FILES=()
           while IFS= read -r file; do
             sed -i "$PIN_PATTERN" "$file"
@@ -137,24 +153,15 @@ jobs:
             echo "  Pinned: $file"
           done < <(grep -rl "$OLD_PIN_PATTERN" --include='*.yml' --include='*.yaml' \
             --exclude-dir=.git \
-            review-pr/ .github/workflows/review-pr.yml .github/workflows/release.yml)
+            review-pr/ .github/workflows/ .github/actions/)
 
           if [ ${#PINNED_FILES[@]} -eq 0 ]; then
             echo "::error::No SHA-pinned self-refs found to update — expected at least one. Check that review-pr/ actions still reference docker/cagent-action with a SHA pin."
             exit 1
           fi
 
-          # Check for any SHA-pinned refs that lack version comments (won't be auto-updated)
-          UNVERSIONED=$(grep -n 'uses: *docker/cagent-action[^@]*@[a-f0-9]\{40\}' "${PINNED_FILES[@]}" 2>/dev/null | \
-            grep -v '# v' || true)
-          if [ -n "$UNVERSIONED" ]; then
-            echo "::error::Found SHA-pinned refs without version comments (won't be auto-updated):"
-            echo "$UNVERSIONED"
-            exit 1
-          fi
-
-          # Verify no refs with the old SHA remain in pinned files
-          REMAINING=$(grep -n "$OLD_PIN_PATTERN" "${PINNED_FILES[@]}" 2>/dev/null | grep -v "${HEAD_SHA}" || true)
+          # Verify no refs with the old pattern remain (other than those already on TEMP_SHA)
+          REMAINING=$(grep -n '^[^#]*uses: *docker/cagent-action[^@]*@' "${PINNED_FILES[@]}" 2>/dev/null | grep -v "@${TEMP_SHA} # ${VERSION}" || true)
           if [ -n "$REMAINING" ]; then
             echo "::error::Old SHA refs remain after pinning:"
             echo "$REMAINING"
@@ -164,13 +171,11 @@ jobs:
           echo "Pinned refs:"
           grep -rn "cagent-action@" "${PINNED_FILES[@]}"
 
-          # Create a detached commit (not on main) with the pinned refs
-          # Note: write-tree captures the full index (all files from HEAD),
-          # but we explicitly add DOCKER_AGENT_VERSION for clarity.
-          git add -f .github/actions/setup-credentials/dist/
+          # Produce the final release commit (parent: TEMP_SHA so the tagged
+          # commit carries both dist/ and the pinned refs).
           git add "${PINNED_FILES[@]}" DOCKER_AGENT_VERSION
-          TREE=$(git write-tree)
-          RELEASE_SHA=$(git commit-tree "$TREE" -p HEAD -m "release: ${VERSION}")
+          TREE2=$(git write-tree)
+          RELEASE_SHA=$(git commit-tree "$TREE2" -p "$TEMP_SHA" -m "release: ${VERSION}")
 
           echo "sha=$RELEASE_SHA" >> $GITHUB_OUTPUT
           echo "Release commit: $RELEASE_SHA"
@@ -245,9 +250,8 @@ jobs:
           echo "$REPOS"
           echo ""
 
-          # Pattern to match cagent-action workflow refs with SHA pins
-          OLD_PATTERN='cagent-action/\.github/workflows/review-pr\.yml@[[:xdigit:]]\{40\} # v[0-9.]*'
-          NEW_REF="cagent-action/.github/workflows/review-pr.yml@${SHA} # ${VERSION}"
+          # Pattern to match any cagent-action workflow ref (SHA, tag, branch, SHA+comment)
+          OLD_PATTERN='cagent-action/\.github/workflows/review-pr\.yml@'
 
           BRANCH="auto/update-cagent-action"
           RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/$VERSION"
@@ -295,7 +299,7 @@ jobs:
             fi
 
             # Apply the sed replacement
-            sed -i "s|${OLD_PATTERN}|${NEW_REF}|g" "$FILE_PATH"
+            sed -i 's|\(docker/cagent-action/\.github/workflows/review-pr\.yml@\).*|\1'"${SHA}"' # '"${VERSION}"'|g' "$FILE_PATH"
 
             if git diff --quiet "$FILE_PATH"; then
               echo "No changes after sed — already up to date"
@@ -387,9 +391,9 @@ jobs:
             exit 1
           fi
 
-          OLD_PATTERN='docker/cagent-action[^@]*@[a-f0-9]\{40\} # v[^ ]*'
+          OLD_PATTERN='docker/cagent-action[^@]*@'
           # YAML sed: anchored on `uses:` to avoid false matches in comments
-          YAML_PIN_PATTERN='s|\(uses: *docker/cagent-action\)\([^@]*\)@[a-f0-9]\{40\} # v[^ ]*|\1\2@'"${SHA}"' # '"${VERSION}"'|g'
+          YAML_PIN_PATTERN='s|\(uses: *docker/cagent-action\)\([^@]*\)@.*|\1\2@'"${SHA}"' # '"${VERSION}"'|g'
 
           UPDATED_FILES=()
 
@@ -400,7 +404,7 @@ jobs:
             echo "  Updated (yaml): $file"
           done < <(grep -rl "$OLD_PATTERN" --include='*.yml' --include='*.yaml' \
             --exclude-dir=.git \
-            review-pr/ .github/workflows/review-pr.yml .github/workflows/release.yml)
+            review-pr/ .github/workflows/ .github/actions/)
 
           if [ ${#UPDATED_FILES[@]} -eq 0 ]; then
             echo "No self-refs needed updating, skipping."

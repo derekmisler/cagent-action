@@ -142,7 +142,9 @@ runs:
     - name: Set Docker Agent version
       id: docker-agent-version
       shell: bash
-      run: echo "value=$(cat "${{ github.action_path }}/DOCKER_AGENT_VERSION" | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: echo "value=$(cat "$ACTION_PATH/DOCKER_AGENT_VERSION" | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
     - name: Validate inputs
       id: validate-inputs
@@ -514,6 +516,7 @@ runs:
         MAX_RETRIES: ${{ inputs.max-retries }}
         RETRY_DELAY: ${{ inputs.retry-delay }}
         TELEMETRY_TAGS: "source=github-actions,repo=${{ github.repository }},workflow=${{ github.workflow }},run_id=${{ github.run_id }}"
+        SKIP_SUMMARY: ${{ inputs.skip-summary }}
       run: |
         set -e
 
@@ -702,7 +705,7 @@ runs:
         echo "execution-time=$EXECUTION_TIME" >> $GITHUB_OUTPUT
 
         # Create job summary (skipped when caller handles its own summary)
-        if [[ "${{ inputs.skip-summary }}" != "true" ]]; then
+        if [[ "$SKIP_SUMMARY" != "true" ]]; then
         {
           echo "## Docker Agent Execution Summary"
           echo ""

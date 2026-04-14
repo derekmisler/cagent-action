@@ -5,7 +5,7 @@ import { generateAppToken } from '../app-token.js';
 
 vi.mock('@actions/core');
 vi.mock('@octokit/auth-app', () => ({
-  createAppAuth: vi.fn(() => vi.fn().mockResolvedValue({ token: 'fake-token' })),
+  createAppAuth: vi.fn().mockReturnValue(vi.fn().mockResolvedValue({ token: 'fake-token' })),
 }));
 vi.mock('@octokit/rest', () => ({
   Octokit: vi.fn(),
@@ -30,9 +30,12 @@ describe('generateAppToken', () => {
     process.env.GITHUB_APP_PRIVATE_KEY = 'FAKE_PRIVATE_KEY_FOR_TESTING';
     process.env.GITHUB_REPOSITORY = 'docker/dagent';
 
-    vi.mocked(Octokit).mockImplementation(() => {
-      throw new Error('API error');
-    });
+    class ThrowingOctokit {
+      constructor() {
+        throw new Error('API error');
+      }
+    }
+    vi.mocked(Octokit).mockImplementation(ThrowingOctokit as unknown as typeof Octokit);
 
     await generateAppToken();
     expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Failed to generate'));
