@@ -10,27 +10,29 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   update-version:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        with:
-          app-id: ${{ secrets.CAGENT_REVIEWER_APP_ID }}
-          private-key: ${{ secrets.CAGENT_REVIEWER_APP_PRIVATE_KEY }}
+      - name: Setup credentials
+        uses: docker/cagent-action/.github/actions/setup-credentials@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ env.GITHUB_APP_TOKEN }}
 
       - name: Determine version
         id: version
         env:
           DISPATCH_VERSION: ${{ github.event.client_payload.version }}
           INPUT_VERSION: ${{ inputs.version }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
         run: |
           if [ -n "$INPUT_VERSION" ]; then
             VERSION="$INPUT_VERSION"
@@ -48,7 +50,7 @@ jobs:
 
       - name: Validate version exists
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           echo "Validating that $VERSION exists as a release on docker/docker-agent..."
@@ -87,7 +89,7 @@ jobs:
       - name: Create or update PR
         if: steps.check.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           CURRENT: ${{ steps.check.outputs.current }}
         run: |

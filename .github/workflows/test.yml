@@ -1,4 +1,4 @@
-name: Test cagent-action
+name: Test Docker Agent Action
 
 on:
   pull_request:
