@@ -40,6 +40,7 @@ jobs:
         with:
           repository: docker/cagent-action
           ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -58,11 +59,13 @@ jobs:
       - name: Setup credentials
         uses: ./.github/actions/setup-credentials
 
-
       - name: Configure git
         run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/docker/cagent-action.git"
           git config user.name "docker-agent[bot]"
           git config user.email "docker-agent[bot]@users.noreply.github.com"
+        env:
+          GITHUB_APP_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
 
       - name: Calculate new version
         id: version

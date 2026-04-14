@@ -73,6 +73,15 @@ on:
       MISTRAL_API_KEY:
         description: "Mistral API key (at least one API key required)"
         required: false
+      CAGENT_ORG_MEMBERSHIP_TOKEN:
+        description: "(deprecated) PAT with read:org scope to check org membership for auto-reviews (now fetched via OIDC)"
+        required: false
+      CAGENT_REVIEWER_APP_ID:
+        description: "(deprecated) GitHub App ID for reviewer identity (now fetched via OIDC)"
+        required: false
+      CAGENT_REVIEWER_APP_PRIVATE_KEY:
+        description: "(deprecated) GitHub App private key (now fetched via OIDC)"
+        required: false
     outputs:
       exit-code:
         description: "Exit code from the review"
@@ -160,7 +169,6 @@ jobs:
           github-token: ${{ env.ORG_MEMBERSHIP_TOKEN }}
           script: |
             const org = process.env.ORG;
-            const username = process.env.PR_AUTHOR;
             const draft = process.env.PR_DRAFT;
             const prNumber = process.env.PR_NUMBER;
 
@@ -171,10 +179,10 @@ jobs:
                 console.log(`⏭️ PR #${prNumber} is a draft — skipping auto-review`);
                 return;
               }
-              username = PR_AUTHOR;
+              username = process.env.PR_AUTHOR;
             } else {
               username = context.payload.pull_request.user.login;
-            } 
+            }
 
             try {
               await github.rest.orgs.checkMembershipForUser({ org, username });
