@@ -393,6 +393,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PARENT_ID: ${{ github.event.comment.in_reply_to_id }}
+          REPO: ${{ github.repository }}
         run: |
           if [ -z "$PARENT_ID" ]; then
             echo "is_agent=false" >> $GITHUB_OUTPUT
@@ -400,7 +401,7 @@ jobs:
             exit 0
           fi
 
-          parent=$(gh api repos/${{ github.repository }}/pulls/comments/$PARENT_ID 2>/dev/null || echo "{}")
+          parent=$(gh api repos/$REPO/pulls/comments/$PARENT_ID 2>/dev/null || echo "{}")
           if echo "$parent" | jq -r '.body // ""' | grep -q "<!-- cagent-review -->"; then
             echo "is_agent=true" >> $GITHUB_OUTPUT
             echo "✅ Reply is to an agent review comment"

@@ -601,7 +601,9 @@ runs:
     - name: Ensure cache directory exists
       if: steps.lock-check.outputs.skip != 'true'
       shell: bash
-      run: mkdir -p "${{ github.workspace }}/.cache"
+      env:
+        WORKSPACE: ${{ github.workspace }}
+      run: mkdir -p "$WORKSPACE/.cache"
 
     - name: Restore reviewer memory
       if: steps.lock-check.outputs.skip != 'true'
@@ -677,8 +679,10 @@ runs:
       if: steps.lock-check.outputs.skip != 'true' && steps.pending-feedback.outputs.has_feedback == 'true'
       continue-on-error: true
       uses: docker/cagent-action@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       with:
-        agent: ${{ github.action_path }}/agents/pr-review-feedback.yaml
+        agent: ${{ env.ACTION_PATH }}/agents/pr-review-feedback.yaml
         prompt: |
           Developers left feedback on previous review comments. Learn from each item:
 
@@ -776,7 +780,9 @@ runs:
     - name: Copy posting format reference
       if: steps.lock-check.outputs.skip != 'true'
       shell: bash
-      run: cp "${{ github.action_path }}/agents/refs/posting-format.md" /tmp/posting_format.md
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: cp "$ACTION_PATH/agents/refs/posting-format.md" /tmp/posting_format.md
 
     # ========================================
     # RUN REVIEW using root cagent-action
@@ -785,8 +791,10 @@ runs:
       if: steps.lock-check.outputs.skip != 'true'
       id: run-review
       uses: docker/cagent-action@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       with:
-        agent: ${{ github.action_path }}/agents/pr-review.yaml
+        agent: ${{ env.ACTION_PATH }}/agents/pr-review.yaml
         prompt: ${{ steps.context.outputs.review_prompt }}
         timeout: "2400"  # 40 min — allows time for large diffs and retries
         anthropic-api-key: ${{ inputs.anthropic-api-key }}

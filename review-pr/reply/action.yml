@@ -56,7 +56,9 @@ runs:
   steps:
     - name: Ensure cache directory exists
       shell: bash
-      run: mkdir -p "${{ github.workspace }}/.cache"
+      env:
+        WORKSPACE: ${{ github.workspace }}
+      run: mkdir -p "$WORKSPACE/.cache"
 
     - name: Restore reviewer memory
       id: restore-memory
@@ -72,8 +74,10 @@ runs:
       id: run-reply
       continue-on-error: true
       uses: docker/cagent-action@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       with:
-        agent: ${{ github.action_path }}/../agents/pr-review-reply.yaml
+        agent: ${{ env.ACTION_PATH }}/../agents/pr-review-reply.yaml
         prompt: ${{ inputs.thread-context }}
         timeout: "300"
         anthropic-api-key: ${{ inputs.anthropic-api-key }}
