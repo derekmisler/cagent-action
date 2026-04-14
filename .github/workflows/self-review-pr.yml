@@ -157,7 +157,7 @@ jobs:
         if: steps.membership.outputs.is_member == 'true'
         id: run-review
         continue-on-error: true # Don't fail the calling workflow if the review errors
-        uses: docker/cagent-action/review-pr@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+        uses: ./review-pr
         with:
           pr-number: ${{ steps.get-pr.outputs.pr-number }}
           github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
@@ -268,7 +268,7 @@ jobs:
         if: steps.membership.outputs.is_member == 'true'
         id: run-review
         continue-on-error: true # Don't fail the calling workflow if the review errors
-        uses: docker/cagent-action/review-pr@f4853bda35d5232d0eaf6fb95ec4ad33ba1c763f # v1.3.4
+        uses: ./review-pr
         with:
           pr-number: ${{ github.event.issue.number }}
           comment-id: ${{ github.event.comment.id }}
