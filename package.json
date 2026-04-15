@@ -7,6 +7,7 @@
     "build": "rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "actionlint": "pnpm build && actionlint -shellcheck=",
     "lint": "biome ci . && tsc --noEmit && pnpm actionlint",

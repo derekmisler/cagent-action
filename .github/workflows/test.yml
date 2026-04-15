@@ -1,4 +1,4 @@
-name: Test Docker Agent Action
+name: Test
 
 on:
   pull_request:
@@ -11,190 +11,119 @@ permissions:
   contents: read
 
 jobs:
-  test-prompt-sanitization:
-    name: Prompt Sanitization Tests
-    runs-on: ubuntu-latest
+  lint:
+    name: Lint
     permissions:
       contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run prompt sanitization tests
-        run: |
-          cd tests
-          chmod +x test-local.sh
-          ./test-local.sh
-
-  test-output-extraction:
-    name: Output Extraction Tests
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run output extraction tests
-        run: |
-          cd tests
-          chmod +x test-output-extraction.sh
-          ./test-output-extraction.sh
-
-  test-job-summary:
-    name: Job Summary Format Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run job summary tests
-        run: |
-          cd tests
-          chmod +x test-job-summary.sh
-          ./test-job-summary.sh
-
-  test-security:
-    name: Security Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run security tests
-        run: |
-          cd tests
-          chmod +x test-security.sh
-          ./test-security.sh
-
-  test-exploits:
-    name: Exploit Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run exploit tests
-        run: |
-          cd tests
-          chmod +x test-exploits.sh
-          ./test-exploits.sh
-
-  test-pirate-agent:
-    name: Pirate Agent Test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check if fork PR
-        id: fork-check
-        run: |
-          # Use default empty string to handle edge cases (deleted branches, malformed events)
-          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name || '' }}"
-          if [[ "${{ github.event_name }}" == "pull_request" && "$HEAD_REPO" != "${{ github.repository }}" && -n "$HEAD_REPO" ]]; then
-            echo "⏭️ Skipping - fork PR (secrets not available)"
-            echo "is_fork=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_fork=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Checkout code
-        if: steps.fork-check.outputs.is_fork != 'true'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run test
-        if: steps.fork-check.outputs.is_fork != 'true'
-        id: pirate
-        uses: ./
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
-          agent: agentcatalog/pirate
-          prompt: "What do we ship today?"
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          run_install: false
 
-      - name: Validate output and exit code
-        if: steps.fork-check.outputs.is_fork != 'true'
-        run: |
-          OUTPUT_FILE="${{ steps.pirate.outputs.output-file }}"
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
 
-          # Check that exit code is 0 (success)
-          if [ "${{ steps.pirate.outputs.exit-code }}" != "0" ]; then
-            echo "❌ Agent failed with exit code: ${{ steps.pirate.outputs.exit-code }}"
-            exit 1
-          fi
-          echo "✅ Agent completed successfully with exit code 0"
+      - name: Build action
+        run: pnpm install --frozen-lockfile && pnpm build
 
-          # Check that output file exists
-          if [ ! -f "$OUTPUT_FILE" ]; then
-            echo "❌ Output file not found: $OUTPUT_FILE"
-            exit 1
-          fi
-          echo "✅ Output file found: $OUTPUT_FILE"
+      - name: Lint and format check
+        run: pnpm biome ci .
 
-          # Display the output for debugging
-          echo "--- Agent Output ---"
-          cat "$OUTPUT_FILE"
-          echo "--- End Output ---"
+      - name: Run actionlint
+        uses: raven-actions/actionlint@e01d1ea33dd6a5ed517d95b4c0c357560ac6f518 # v2.1.1
+        with:
+          fail-on-error: true
+          # Disable shellcheck - it reports info/style warnings as errors
+          # We care about YAML structure and action syntax, not shell style
+          shellcheck: false
 
-          # Check that output is clean (no agent markers or metadata in output)
-          if grep -qF -- "--- Agent: root ---" "$OUTPUT_FILE"; then
-            echo "⚠️  Output still contains '--- Agent: root ---' marker (not fully cleaned)"
-          fi
-
-          # Check that output doesn't contain log metadata
-          if grep -qE "^(time=|level=)" "$OUTPUT_FILE"; then
-            echo "❌ Output contains log metadata (time= or level=) - cleaning failed"
-            exit 1
-          fi
-          echo "✅ Output is clean (no log metadata)"
-
-          # Check that there is actual content (non-empty, non-whitespace)
-          CONTENT=$(cat "$OUTPUT_FILE" | grep -v '^$' | head -n 5)
-
-          if [ -z "$CONTENT" ]; then
-            echo "❌ No content found in output file"
-            exit 1
-          fi
-
-          echo "✅ Found agent response content"
-          echo "Response preview: $(echo "$CONTENT" | head -n 1)"
-
-  test-invalid-agent:
-    name: Invalid Agent Test
-    runs-on: ubuntu-latest
+  test:
+    name: Unit Tests
     permissions:
       contents: read
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Test should fail on invalid agent
-        id: invalid-agent
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm test
+
+  integration-test:
+    name: Integration Tests
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup credentials
+        uses: ./.github/actions/setup-credentials
         continue-on-error: true
-        uses: ./
+
+      - name: Run integration tests
+        run: pnpm test:integration
+
+  typecheck:
+    name: Typecheck
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
-          agent: agentcatalog/nonexistent
-          prompt: "This should fail"
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          run_install: false
 
-      - name: Verify invalid agent failed
-        run: |
-          OUTPUT_FILE="${{ steps.invalid-agent.outputs.output-file }}"
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
 
-          # Check exit code OR check for error in output (Docker Agent may exit 0 even on pull failure)
-          if [ "${{ steps.invalid-agent.outputs.exit-code }}" == "0" ]; then
-            # Exit code is 0, check if output contains error message
-            if [ -f "$OUTPUT_FILE" ] && grep -q "failed to pull" "$OUTPUT_FILE"; then
-              echo "✅ Invalid agent correctly failed (error in output)"
-            else
-              echo "❌ Invalid agent should have failed but succeeded with no error"
-              exit 1
-            fi
-          else
-            echo "✅ Invalid agent correctly failed (non-zero exit code)"
-          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck

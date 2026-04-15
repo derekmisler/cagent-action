@@ -3,13 +3,13 @@ version: "6"
 models:
   sonnet:
     provider: anthropic
-    model: claude-sonnet-4-5
-    temperature: 0.0
-    max_tokens: 8192
-  haiku:
+    model: claude-sonnet-4-6
+    max_tokens: 64000
+  sonnet-thinking:
     provider: anthropic
-    model: claude-haiku-4-5
-    max_tokens: 4096
+    model: claude-sonnet-4-6
+    thinking_budget: adaptive/high
+    max_tokens: 64000
 
 agents:
   root:
@@ -197,7 +197,7 @@ agents:
         path: .cache/pr-review-memory.db
 
   drafter:
-    model: sonnet
+    model: sonnet-thinking
     description: Bug Hypothesis Generator
     instruction: |
       Analyze the provided PR diff and generate specific bug hypotheses.
