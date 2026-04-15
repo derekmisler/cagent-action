@@ -13,7 +13,7 @@ on:
           - minor
           - major
       pre_release:
-        description: "Pre-release (skips updating consumer repos)"
+        description: "Pre-release (skips updating consumer repos and notifying Slack)"
         required: false
         default: false
         type: boolean
@@ -200,9 +200,183 @@ jobs:
           fi
           gh release create "$VERSION" "${ARGS[@]}"
 
+  publish-agent:
+    name: Push review-pr agent to Docker Hub
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release.outputs.version }}
+
+      - name: Install Docker Agent
+        run: |
+          set -e
+          DOCKER_AGENT_VERSION=$(tr -d '[:space:]' < DOCKER_AGENT_VERSION)
+          if [ -z "$DOCKER_AGENT_VERSION" ]; then
+            echo "::error::Could not extract Docker Agent version from DOCKER_AGENT_VERSION"
+            exit 1
+          fi
+          echo "Using Docker Agent version from DOCKER_AGENT_VERSION: ${DOCKER_AGENT_VERSION}"
+          curl -fL -o docker-agent \
+            "https://github.com/docker/docker-agent/releases/download/${DOCKER_AGENT_VERSION}/docker-agent-linux-amd64"
+          chmod +x docker-agent
+          sudo mv docker-agent /usr/local/bin/
+
+      - name: Docker Hub login
+        env:
+          HUB_USER: ${{ secrets.HUB_USER }}
+          HUB_PAT: ${{ secrets.HUB_PAT }}
+        run: |
+          set -e
+          if [ -z "${HUB_USER}" ]; then echo "::error::HUB_USER secret is not set"; exit 1; fi
+          if [ -z "${HUB_PAT}" ]; then echo "::error::HUB_PAT secret is not set"; exit 1; fi
+          echo "${HUB_PAT}" | docker login --username "${HUB_USER}" --password-stdin
+
+      - name: Push agent
+        env:
+          HUB_ORG: ${{ secrets.HUB_ORG }}
+        run: |
+          set -e
+          if [ -z "${HUB_ORG}" ]; then echo "::error::HUB_ORG secret is not set"; exit 1; fi
+          cd review-pr/agents
+          TELEMETRY_ENABLED=false docker-agent share push pr-review.yaml "${HUB_ORG}/review-pr"
+
+      - name: Upload README to Docker Hub
+        env:
+          HUB_USER: ${{ secrets.HUB_USER }}
+          HUB_PAT: ${{ secrets.HUB_PAT }}
+          HUB_ORG: ${{ secrets.HUB_ORG }}
+        run: |
+          set -e
+          TOKEN=$(curl -sSf -X POST https://hub.docker.com/v2/users/login/ \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${HUB_USER}\",\"password\":\"${HUB_PAT}\"}" | jq -r .token)
+          if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
+            echo "::error::Failed to get Docker Hub API token"
+            exit 1
+          fi
+          curl -sSf -X PATCH "https://hub.docker.com/v2/namespaces/${HUB_ORG}/repositories/review-pr" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg desc "Docker Agent-powered PR review team. Analyzes code changes, posts reviews, and learns from feedback." \
+                       --rawfile readme review-pr/README.md \
+                       '{description: $desc, full_description: $readme}')"
+
+  update-self-refs:
+    name: Update self-refs in cagent-action main
+    needs: release
+    if: success()
+    runs-on: ubuntu-latest
+    concurrency:
+      group: update-self-refs
+      cancel-in-progress: false
+    steps:
+
+      - name: Checkout for composite actions
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: docker/cagent-action
+          ref: ${{ needs.release.outputs.sha }}
+
+      - name: Setup credentials
+        uses: ./.github/actions/setup-credentials
+
+      - name: Checkout cagent-action
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: docker/cagent-action
+          token: ${{ env.GITHUB_APP_TOKEN }}
+
+      - name: Update self-ref pins
+        id: update
+        env:
+          SHA: ${{ needs.release.outputs.sha }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          if [ -z "$SHA" ] || [ -z "$VERSION" ]; then
+            echo "::error::SHA or VERSION is empty (SHA='$SHA', VERSION='$VERSION')"
+            exit 1
+          fi
+
+          OLD_PATTERN='docker/cagent-action[^@]*@'
+          # YAML sed: anchored on `uses:` to avoid false matches in comments
+          YAML_PIN_PATTERN='s|\(uses: *docker/cagent-action\)\([^@]*\)@.*|\1\2@'"${SHA}"' # '"${VERSION}"'|g'
+
+          UPDATED_FILES=()
+
+          # Update YAML/YAML files (uses: anchored)
+          while IFS= read -r file; do
+            sed -i "$YAML_PIN_PATTERN" "$file"
+            UPDATED_FILES+=("$file")
+            echo "  Updated (yaml): $file"
+          done < <(grep -rl "$OLD_PATTERN" --include='*.yml' --include='*.yaml' \
+            --exclude-dir=.git \
+            review-pr/ .github/workflows/ .github/actions/)
+
+          if [ ${#UPDATED_FILES[@]} -eq 0 ]; then
+            echo "No self-refs needed updating, skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet; then
+            echo "Files already up to date, skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Updated self-refs to ${SHA} # ${VERSION}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update PR
+        if: steps.update.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+          SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          BRANCH="auto/update-cagent-action"
+          RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/$VERSION"
+
+          git config user.name "docker-agent[bot]"
+          git config user.email "docker-agent[bot]@users.noreply.github.com"
+
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore: update cagent-action to $VERSION"
+
+          # Force-push to handle both new and existing branches.
+          # This branch is exclusively managed by this workflow, so --force is safe.
+          git push --force origin "$BRANCH"
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+
+          PR_BODY="$(cat <<EOF
+          ## Summary
+          Updates \`cagent-action\` reference in \`pr-review.yml\` to [$VERSION]($RELEASE_URL).
+          - **Commit**: \`${SHA}\`
+          - **Version**: \`${VERSION}\`
+          > Auto-generated by the [release](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow.
+          EOF
+          )"
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Updating existing PR #$EXISTING_PR"
+            gh pr edit "$EXISTING_PR" \
+              --title "chore: update cagent-action to $VERSION" \
+              --body "$PR_BODY" \
+              --add-reviewer "derekmisler"
+          else
+            echo "Creating new PR"
+            gh pr create \
+              --title "chore: update cagent-action to $VERSION" \
+              --body "$PR_BODY" \
+              --reviewer "derekmisler"
+          fi
+
   update-consumers:
     name: Update consumer repo references
-    needs: release
+    needs: [release, update-self-refs]
     if: success() && !inputs.pre_release
     runs-on: ubuntu-latest
     concurrency:
@@ -355,184 +529,10 @@ jobs:
 
           echo "Done updating consumer repos."
 
-  update-self-refs:
-    name: Update self-refs in cagent-action main
-    needs: release
-    if: success()
-    runs-on: ubuntu-latest
-    concurrency:
-      group: update-self-refs
-      cancel-in-progress: false
-    steps:
-
-      - name: Checkout for composite actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: docker/cagent-action
-          ref: ${{ needs.release.outputs.sha }}
-
-      - name: Setup credentials
-        uses: ./.github/actions/setup-credentials
-
-      - name: Checkout cagent-action
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: docker/cagent-action
-          token: ${{ env.GITHUB_APP_TOKEN }}
-
-      - name: Update self-ref pins
-        id: update
-        env:
-          SHA: ${{ needs.release.outputs.sha }}
-          VERSION: ${{ needs.release.outputs.version }}
-        run: |
-          if [ -z "$SHA" ] || [ -z "$VERSION" ]; then
-            echo "::error::SHA or VERSION is empty (SHA='$SHA', VERSION='$VERSION')"
-            exit 1
-          fi
-
-          OLD_PATTERN='docker/cagent-action[^@]*@'
-          # YAML sed: anchored on `uses:` to avoid false matches in comments
-          YAML_PIN_PATTERN='s|\(uses: *docker/cagent-action\)\([^@]*\)@.*|\1\2@'"${SHA}"' # '"${VERSION}"'|g'
-
-          UPDATED_FILES=()
-
-          # Update YAML/YAML files (uses: anchored)
-          while IFS= read -r file; do
-            sed -i "$YAML_PIN_PATTERN" "$file"
-            UPDATED_FILES+=("$file")
-            echo "  Updated (yaml): $file"
-          done < <(grep -rl "$OLD_PATTERN" --include='*.yml' --include='*.yaml' \
-            --exclude-dir=.git \
-            review-pr/ .github/workflows/ .github/actions/)
-
-          if [ ${#UPDATED_FILES[@]} -eq 0 ]; then
-            echo "No self-refs needed updating, skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet; then
-            echo "Files already up to date, skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Updated self-refs to ${SHA} # ${VERSION}"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create or update PR
-        if: steps.update.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
-          VERSION: ${{ needs.release.outputs.version }}
-          SHA: ${{ needs.release.outputs.sha }}
-        run: |
-          BRANCH="auto/update-cagent-action"
-          RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/$VERSION"
-
-          git config user.name "docker-agent[bot]"
-          git config user.email "docker-agent[bot]@users.noreply.github.com"
-
-          git checkout -B "$BRANCH"
-          git add -A
-          git commit -m "chore: update cagent-action to $VERSION"
-
-          # Force-push to handle both new and existing branches.
-          # This branch is exclusively managed by this workflow, so --force is safe.
-          git push --force origin "$BRANCH"
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
-
-          PR_BODY="$(cat <<EOF
-          ## Summary
-          Updates \`cagent-action\` reference in \`pr-review.yml\` to [$VERSION]($RELEASE_URL).
-          - **Commit**: \`${SHA}\`
-          - **Version**: \`${VERSION}\`
-          > Auto-generated by the [release](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow.
-          EOF
-          )"
-
-          if [ -n "$EXISTING_PR" ]; then
-            echo "Updating existing PR #$EXISTING_PR"
-            gh pr edit "$EXISTING_PR" \
-              --title "chore: update cagent-action to $VERSION" \
-              --body "$PR_BODY" \
-              --add-reviewer "derekmisler"
-          else
-            echo "Creating new PR"
-            gh pr create \
-              --title "chore: update cagent-action to $VERSION" \
-              --body "$PR_BODY" \
-              --reviewer "derekmisler"
-          fi
-
-  publish-agent:
-    name: Push review-pr agent to Docker Hub
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ needs.release.outputs.version }}
-
-      - name: Install Docker Agent
-        run: |
-          set -e
-          DOCKER_AGENT_VERSION=$(tr -d '[:space:]' < DOCKER_AGENT_VERSION)
-          if [ -z "$DOCKER_AGENT_VERSION" ]; then
-            echo "::error::Could not extract Docker Agent version from DOCKER_AGENT_VERSION"
-            exit 1
-          fi
-          echo "Using Docker Agent version from DOCKER_AGENT_VERSION: ${DOCKER_AGENT_VERSION}"
-          curl -fL -o docker-agent \
-            "https://github.com/docker/docker-agent/releases/download/${DOCKER_AGENT_VERSION}/docker-agent-linux-amd64"
-          chmod +x docker-agent
-          sudo mv docker-agent /usr/local/bin/
-
-      - name: Docker Hub login
-        env:
-          HUB_USER: ${{ secrets.HUB_USER }}
-          HUB_PAT: ${{ secrets.HUB_PAT }}
-        run: |
-          set -e
-          if [ -z "${HUB_USER}" ]; then echo "::error::HUB_USER secret is not set"; exit 1; fi
-          if [ -z "${HUB_PAT}" ]; then echo "::error::HUB_PAT secret is not set"; exit 1; fi
-          echo "${HUB_PAT}" | docker login --username "${HUB_USER}" --password-stdin
-
-      - name: Push agent
-        env:
-          HUB_ORG: ${{ secrets.HUB_ORG }}
-        run: |
-          set -e
-          if [ -z "${HUB_ORG}" ]; then echo "::error::HUB_ORG secret is not set"; exit 1; fi
-          cd review-pr/agents
-          TELEMETRY_ENABLED=false docker-agent share push pr-review.yaml "${HUB_ORG}/review-pr"
-
-      - name: Upload README to Docker Hub
-        env:
-          HUB_USER: ${{ secrets.HUB_USER }}
-          HUB_PAT: ${{ secrets.HUB_PAT }}
-          HUB_ORG: ${{ secrets.HUB_ORG }}
-        run: |
-          set -e
-          TOKEN=$(curl -sSf -X POST https://hub.docker.com/v2/users/login/ \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${HUB_USER}\",\"password\":\"${HUB_PAT}\"}" | jq -r .token)
-          if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
-            echo "::error::Failed to get Docker Hub API token"
-            exit 1
-          fi
-          curl -sSf -X PATCH "https://hub.docker.com/v2/namespaces/${HUB_ORG}/repositories/review-pr" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n --arg desc "Docker Agent-powered PR review team. Analyzes code changes, posts reviews, and learns from feedback." \
-                       --rawfile readme review-pr/README.md \
-                       '{description: $desc, full_description: $readme}')"
-
   notify:
     name: Notify Slack
-    needs: [release, publish-agent]
-    if: success()
+    needs: [release, publish-agent, update-self-refs, update-consumers]
+    if: success() && !inputs.pre_release
     runs-on: ubuntu-latest
     steps:
 
