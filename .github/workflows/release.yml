@@ -493,7 +493,7 @@ jobs:
 
             git checkout -B "$BRANCH"
             git add "$FILE_PATH"
-            git commit -m "chore: update cagent-action to $VERSION"
+            git commit -s -m "chore: update cagent-action to $VERSION"
             git push --force origin "$BRANCH"
 
             # Create or update PR
@@ -513,7 +513,7 @@ jobs:
               gh pr edit "$EXISTING_PR" --repo "$REPO" \
                 --title "chore: update cagent-action to $VERSION" \
                 --body "$PR_BODY" \
-                --add-reviewer "derekmisler"
+                --add-reviewer "derekmisler" 2>&1 || echo "::warning::Failed to update PR #$EXISTING_PR in $REPO (may be non-fatal)"
             else
               echo "Creating new PR in $REPO"
               gh pr create --repo "$REPO" \
