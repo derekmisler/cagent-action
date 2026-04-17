@@ -19,7 +19,7 @@ on:
     types: [ready_for_review, opened]
 
 permissions:
-  contents: read # Required at top-level to give `issue_comment` events access to the secrets below.
+  contents: read # Required at top-level so `issue_comment` events can read repository contents.
 
 jobs:
   review:
@@ -33,9 +33,74 @@ jobs:
       id-token: write # Required for OIDC authentication to AWS Secrets Manager
 ```
 
-> **Note:** Auto-review on `pull_request` events only works for same-repo branches — fork PRs are skipped because OIDC tokens aren't available in the fork context. For fork PRs, an org member can comment `/review` to trigger a review (the `issue_comment` event runs in the base repo context where OIDC works). See [Fork PR Auto-Review](#fork-pr-auto-review) for a two-workflow pattern that enables automatic reviews on fork PRs.
+> **Note:** Auto-review on `pull_request` events only works for same-repo branches — fork PRs are skipped because OIDC tokens aren't available in the fork context. For fork PRs, an org member can comment `/review` to trigger a review (the `issue_comment` event runs in the base repo context where OIDC works).
 
-> **Why explicit secrets instead of `secrets: inherit`?** This follows the principle of least privilege — the called workflow only receives the secrets it actually needs, not every secret in your repository. This is the recommended approach for public repos and security-conscious teams.
+### Fork PR Auto-Review
+
+If you want automatic reviews on fork PRs, add a trigger workflow that saves the PR number via `workflow_run`:
+
+**`.github/workflows/pr-review-trigger.yml`:**
+
+```yaml
+name: PR Review - Trigger
+on:
+  pull_request:
+    types: [ready_for_review, opened]
+jobs:
+  save-pr:
+    if: github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save PR number
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: printf '%s' "$PR_NUMBER" > pr_number.txt
+
+      - name: Upload PR context
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: pr-review-context
+          path: pr_number.txt
+          retention-days: 1
+```
+
+Then add `workflow_run` to your main review workflow, download the artifact, and pass `pr-number` to the reusable workflow. `workflow_run` runs in the base repo context, so OIDC works:
+
+**`.github/workflows/pr-review.yml`:**
+
+```yaml
+name: PR Review
+on:
+  ...
+  workflow_run:
+    workflows: ["PR Review - Trigger"]
+    types: [completed]
+
+jobs:
+  get-pr-context:
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.pr.outputs.number }}
+    steps:
+      - name: Download PR context
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@VERSION
+        with:
+          name: pr-review-context
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Read PR number
+        id: pr
+        if: github.event_name == 'workflow_run'
+        run: echo "number=$(cat pr_number.txt)" >> $GITHUB_OUTPUT
+  review:
+    needs: [get-pr-context]
+    uses: docker/cagent-action/.github/workflows/review-pr.yml@VERSION
+    with:
+      pr-number: ${{ needs.get-pr-context.outputs.pr-number }}
+    ...
+```
 
 ### Customizing for your organization
 
@@ -53,6 +118,14 @@ The workflow automatically handles:
 | PR opened/ready         | Auto-reviews PRs from your org members (same-repo branches only; fork PRs use `/review`) |
 | `/review` comment       | Manual review on any PR (shows as a check run on the PR if `checks: write` is granted)   |
 | Reply to review comment | Responds in-thread and learns from feedback to improve future reviews                    |
+
+> **You don't need to add fork protection guards.** The reusable workflow has built-in defense-in-depth — you don't need to add `if:` conditions like `github.event.pull_request.head.repo.full_name == github.repository` or `author_association` checks to your caller workflow. The reusable workflow already:
+>
+> 1. **Skips fork PRs** on `pull_request` events (`head.repo == base.repo` check)
+> 2. **Fails gracefully** when OIDC tokens are unavailable (fork context) — no credentials are fetched
+> 3. **Verifies org membership** before every review (auto-review checks the PR author; `/review` checks the commenter)
+>
+> Adding redundant guards at the caller level can actually break `/review` and feedback capture, since `issue_comment` and `pull_request_review_comment` events don't have `pull_request.head.repo` context.
 
 ---
 
@@ -90,20 +163,6 @@ docker agent run agentcatalog/review-pr --prompt-file CONTRIBUTING.md "Review my
 
 ---
 
-## Required Secrets
-
-### Secrets
-
-Provide at least one AI API key as a repository secret:
-
-| Secret              | Description                         |
-| ------------------- | ----------------------------------- |
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models |
-| `OPENAI_API_KEY`    | OpenAI API key                      |
-| `GOOGLE_API_KEY`    | Google API key (Gemini)             |
-
----
-
 ## Advanced: Using the Composite Action Directly
 
 For more control over the workflow, use the composite action instead of the reusable workflow:
@@ -135,7 +194,7 @@ jobs:
       - uses: docker/cagent-action/review-pr@VERSION
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
 ```
 
 > **Note:** When using the composite action directly, learning from feedback is handled automatically — the review action collects and processes any pending feedback artifacts before each review. However, to _capture_ that feedback, use the reusable workflow which includes the `capture-feedback` job, or add the equivalent artifact upload step to your own workflow.
@@ -263,7 +322,7 @@ PR number and comment ID are auto-detected from `github.event` when not provided
 | `github-app-private-key`   | GitHub App private key                                           | No       |
 | `add-prompt-files`         | Comma-separated files to append to the prompt                    | No       |
 
-\*At least one API key is required.
+\*API keys are optional when using the reusable workflow (credentials are fetched via OIDC). Only required when using the composite action directly without OIDC.
 
 ---
 
@@ -441,70 +500,6 @@ Each eval file in `review-pr/agents/evals/` contains:
 **Context-aware:** Reads `AGENTS.md`/`CLAUDE.md` for project conventions and checks build files (e.g., `go.mod`, `package.json`) to validate findings against the project's actual toolchain version.
 
 **Ignores:** Style, formatting, documentation, test files, unchanged code
-
----
-
-## Fork PR Auto-Review
-
-`pull_request` events from forks can't access OIDC tokens, so auto-review is skipped. `/review` always works on fork PRs. If you want automatic fork PR reviews, add a trigger workflow that saves the PR number via `workflow_run`:
-
-**`.github/workflows/pr-review-trigger.yml`:**
-
-```yaml
-name: PR Review - Trigger
-on:
-  pull_request:
-    types: [ready_for_review, opened]
-jobs:
-  save-pr:
-    if: github.event.pull_request.head.repo.fork
-    runs-on: ubuntu-latest
-    steps:
-      - name: Save PR number
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: printf '%s' "$PR_NUMBER" > pr_number.txt
-
-      - name: Upload PR context
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: pr-review-context
-          path: pr_number.txt
-          retention-days: 1
-```
-
-Then add `workflow_run` to your main review workflow, download the artifact, and pass `pr-number` to the reusable workflow. `workflow_run` runs in the base repo context, so OIDC works:
-
-**`.github/workflows/pr-review.yml`:**
-
-```yaml
-name: PR Review
-on:
-  ...
-  workflow_run:
-    workflows: ["PR Review - Trigger"]
-    types: [completed]
-
-jobs:
-  get-pr-context:
-    runs-on: ubuntu-latest
-    outputs:
-      pr-number: ${{ steps.pr.outputs.number }}
-    steps:
-      - name: Download PR context
-        if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@VERSION
-        with:
-          name: pr-review-context
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-  review:
-    needs: [get-pr-context]
-    uses: docker/cagent-action/.github/workflows/review-pr.yml@VERSION
-    with:
-      pr-number: ${{ needs.get-pr-context.outputs.pr-number }}
-    ...
-```
 
 ## Troubleshooting
 
