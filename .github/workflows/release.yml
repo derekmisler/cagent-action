@@ -60,14 +60,6 @@ jobs:
       - name: Setup credentials
         uses: ./.github/actions/setup-credentials
 
-      - name: Configure git
-        run: |
-          git remote set-url origin "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/docker/cagent-action.git"
-          git config user.name "docker-agent[bot]"
-          git config user.email "docker-agent[bot]@users.noreply.github.com"
-        env:
-          GITHUB_APP_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
-
       - name: Calculate new version
         id: version
         env:
@@ -115,29 +107,37 @@ jobs:
         id: release-commit
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
         run: |
           set -e
 
-          # ── Pass 1 ──────────────────────────────────────────────────────────
-          # Stage the compiled dist/ output (gitignored on main) so it is
-          # included in the tree BEFORE we resolve which SHA to pin refs to.
-          # The commit produced here (TEMP_SHA) is what consumers will resolve
-          # when they fetch sub-actions like setup-credentials — dist/ must
-          # exist at that SHA or they will fail.
+          # ── Pass 1: Stage dist/ ──────────────────────────────────────────────
+          # Enumerate all dist/ files (both setup-credentials and signed-commit)
           echo "Pass 1: staging dist/ and creating temp commit..."
           if [ ! -d .github/actions/setup-credentials/dist ] || [ -z "$(ls -A .github/actions/setup-credentials/dist)" ]; then
-            echo "::error::dist/ directory is missing or empty — build may have failed"
+            echo "::error::setup-credentials/dist/ is missing or empty — build may have failed"
             exit 1
           fi
-          git add -f .github/actions/setup-credentials/dist/
-          TREE1=$(git write-tree)
-          TEMP_SHA=$(git commit-tree "$TREE1" -p HEAD -m "release(temp): stage dist/ for ${VERSION}")
+          if [ ! -d .github/actions/signed-commit/dist ] || [ -z "$(ls -A .github/actions/signed-commit/dist)" ]; then
+            echo "::error::signed-commit/dist/ is missing — CLI build may have failed"
+            exit 1
+          fi
+
+          # Create temp branch and first commit (staging dist/)
+          STAGING_BRANCH="release-staging/${VERSION}"
+          TEMP_SHA=$(find .github/actions/setup-credentials/dist/ .github/actions/signed-commit/dist/ -type f 2>/dev/null | \
+            GITHUB_TOKEN="${GH_TOKEN}" node .github/actions/signed-commit/dist/signed-commit-cli.js \
+              --repo docker/cagent-action \
+              --branch "$STAGING_BRANCH" \
+              --base-ref main \
+              --force \
+              --message "release(temp): stage dist/ for ${VERSION}" \
+              --add-stdin)
+
           echo "TEMP_SHA=${TEMP_SHA}"
 
-          # ── Pass 2 ──────────────────────────────────────────────────────────
-          # Now pin all self-refs to TEMP_SHA (not HEAD). This ensures that
-          # consumers following the pinned SHA land on a commit where dist/
-          # already exists (produced in Pass 1 above).
+          # ── Pass 2: Pin refs ─────────────────────────────────────────────────
+          # (sed pinning logic stays exactly as-is — pins to TEMP_SHA)
           echo "Pass 2: pinning refs to ${TEMP_SHA} # ${VERSION}..."
 
           # Replace all docker/cagent-action*@<any-ref> refs (SHA, tag, branch, SHA+comment)
@@ -172,22 +172,26 @@ jobs:
           echo "Pinned refs:"
           grep -rn "cagent-action@" "${PINNED_FILES[@]}"
 
-          # Produce the final release commit (parent: TEMP_SHA so the tagged
-          # commit carries both dist/ and the pinned refs).
-          git add "${PINNED_FILES[@]}" DOCKER_AGENT_VERSION
-          TREE2=$(git write-tree)
-          RELEASE_SHA=$(git commit-tree "$TREE2" -p "$TEMP_SHA" -m "release: ${VERSION}")
+          # Create second commit on the staging branch (pinned refs)
+          RELEASE_SHA=$(printf '%s\n' "${PINNED_FILES[@]}" DOCKER_AGENT_VERSION | \
+            GITHUB_TOKEN="${GH_TOKEN}" node .github/actions/signed-commit/dist/signed-commit-cli.js \
+              --repo docker/cagent-action \
+              --branch "$STAGING_BRANCH" \
+              --message "release: ${VERSION}" \
+              --add-stdin)
 
           echo "sha=$RELEASE_SHA" >> $GITHUB_OUTPUT
           echo "Release commit: $RELEASE_SHA"
 
-      - name: Push version tag
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_SHA: ${{ steps.release-commit.outputs.sha }}
-        run: |
-          git tag "$VERSION" "$RELEASE_SHA"
-          git push origin "$VERSION"
+          # ── Create tag via API (no git push needed) ──────────────────────────
+          gh api "repos/docker/cagent-action/git/refs" \
+            -f "ref=refs/tags/${VERSION}" \
+            -f "sha=${RELEASE_SHA}" > /dev/null
+
+          # ── Clean up staging branch ──────────────────────────────────────────
+          gh api -X DELETE "repos/docker/cagent-action/git/refs/heads/${STAGING_BRANCH}" > /dev/null 2>&1 || true
+
+          echo "✅ Tag ${VERSION} created pointing to ${RELEASE_SHA}"
 
       - name: Create GitHub Release
         env:
@@ -293,6 +297,20 @@ jobs:
           repository: docker/cagent-action
           token: ${{ env.GITHUB_APP_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build signed-commit CLI
+        run: pnpm install --frozen-lockfile && pnpm build
+
       - name: Update self-ref pins
         id: update
         env:
@@ -328,6 +346,7 @@ jobs:
           else
             echo "Updated self-refs to ${SHA} # ${VERSION}"
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "${UPDATED_FILES[@]}" > /tmp/updated-files.txt
           fi
 
       - name: Create or update PR
@@ -340,16 +359,16 @@ jobs:
           BRANCH="auto/update-cagent-action"
           RELEASE_URL="https://github.com/docker/cagent-action/releases/tag/$VERSION"
 
-          git config user.name "docker-agent[bot]"
-          git config user.email "docker-agent[bot]@users.noreply.github.com"
+          # Create signed commit
+          COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node .github/actions/signed-commit/dist/signed-commit-cli.js \
+              --repo docker/cagent-action \
+              --branch "$BRANCH" \
+              --base-ref main \
+              --force \
+              --message "chore: update cagent-action to $VERSION" \
+              --add-stdin < /tmp/updated-files.txt)
 
-          git checkout -B "$BRANCH"
-          git add -A
-          git commit -m "chore: update cagent-action to $VERSION"
-
-          # Force-push to handle both new and existing branches.
-          # This branch is exclusively managed by this workflow, so --force is safe.
-          git push --force origin "$BRANCH"
+          echo "✅ Signed commit: $COMMIT_OID"
 
           EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
 
@@ -371,6 +390,7 @@ jobs:
           else
             echo "Creating new PR"
             gh pr create \
+              --head "$BRANCH" \
               --title "chore: update cagent-action to $VERSION" \
               --body "$PR_BODY" \
               --reviewer "derekmisler"
@@ -404,6 +424,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -e
+
+          CAGENT_DIR="$(pwd)"
 
           if [ -z "$SHA" ] || [ -z "$VERSION" ]; then
             echo "::error::SHA or VERSION is empty (SHA='$SHA', VERSION='$VERSION')"
@@ -487,14 +509,21 @@ jobs:
 
             echo "Updated reference to ${SHA} # ${VERSION}"
 
-            # Commit and push
-            git config user.name "docker-agent[bot]"
-            git config user.email "docker-agent[bot]@users.noreply.github.com"
+            # Create signed commit via API
+            COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node "${CAGENT_DIR}/.github/actions/signed-commit/dist/signed-commit-cli.js" \
+              --repo "$REPO" \
+              --branch "$BRANCH" \
+              --base-ref main \
+              --force \
+              --message "chore: update cagent-action to $VERSION" \
+              --add "$FILE_PATH") || {
+              echo "::warning::Failed to create signed commit in $REPO (may lack write access)"
+              cd /
+              rm -rf "$WORK_DIR"
+              continue
+            }
 
-            git checkout -B "$BRANCH"
-            git add "$FILE_PATH"
-            git commit -s -m "chore: update cagent-action to $VERSION"
-            git push --force origin "$BRANCH"
+            echo "✅ Signed commit: $COMMIT_OID"
 
             # Create or update PR
             EXISTING_PR=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number')
@@ -517,6 +546,7 @@ jobs:
             else
               echo "Creating new PR in $REPO"
               gh pr create --repo "$REPO" \
+                --head "$BRANCH" \
                 --title "chore: update cagent-action to $VERSION" \
                 --body "$PR_BODY" \
                 --reviewer "derekmisler" || echo "::warning::Failed to create PR in $REPO"

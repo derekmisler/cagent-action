@@ -4,20 +4,12 @@ import resolve from '@rollup/plugin-node-resolve';
 import typescript from '@rollup/plugin-typescript';
 import nodeExternals from 'rollup-plugin-node-externals';
 
-/** @type {import('rollup').RollupOptions} */
-export default {
-  input: 'src/index.ts',
+const shared = {
   // Suppress harmless warnings from third-party CJS/ESM code
   onwarn(warning, defaultHandler) {
     if (warning.code === 'CIRCULAR_DEPENDENCY') return;
     if (warning.code === 'THIS_IS_UNDEFINED') return;
     defaultHandler(warning);
-  },
-  output: {
-    file: '.github/actions/setup-credentials/dist/setup-credentials.js',
-    format: 'esm',
-    sourcemap: true,
-    inlineDynamicImports: true,
   },
   plugins: [
     // Externalize Node.js built-ins (available on runner); bundle all deps
@@ -28,3 +20,27 @@ export default {
     typescript({ tsconfig: './tsconfig.json', declaration: false, outDir: undefined }),
   ],
 };
+
+/** @type {import('rollup').RollupOptions[]} */
+export default [
+  {
+    input: 'src/index.ts',
+    ...shared,
+    output: {
+      file: '.github/actions/setup-credentials/dist/setup-credentials.js',
+      format: 'esm',
+      sourcemap: true,
+      inlineDynamicImports: true,
+    },
+  },
+  {
+    input: 'src/signed-commit-cli.ts',
+    ...shared,
+    output: {
+      file: '.github/actions/signed-commit/dist/signed-commit-cli.js',
+      format: 'esm',
+      sourcemap: true,
+      inlineDynamicImports: true,
+    },
+  },
+];

@@ -7,6 +7,7 @@
       "!.pnpm-store",
       "!dist",
       "!.github/actions/setup-credentials/dist",
+      "!.github/actions/signed-commit/dist",
       "!coverage",
       "!pnpm-lock.yaml",
       "!review-pr/agents/evals/results"
