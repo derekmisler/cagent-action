@@ -3,7 +3,7 @@ node_modules/
 
 # Build output (rebuilt automatically by the build workflow)
 dist/
-.github/actions/setup-credentials/dist/
+**/dist/
 *.js.map
 licenses.txt
 
