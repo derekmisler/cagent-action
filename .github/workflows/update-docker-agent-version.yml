@@ -27,6 +27,20 @@ jobs:
         with:
           token: ${{ env.GITHUB_APP_TOKEN }}
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build signed-commit CLI
+        run: pnpm install --frozen-lockfile && pnpm build
+
       - name: Determine version
         id: version
         env:
@@ -96,18 +110,15 @@ jobs:
           BRANCH="auto/update-docker-agent-version"
           RELEASE_URL="https://github.com/docker/docker-agent/releases/tag/$VERSION"
 
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node .github/actions/signed-commit/dist/signed-commit-cli.js \
+            --repo docker/cagent-action \
+            --branch "$BRANCH" \
+            --base-ref main \
+            --force \
+            --message "chore: update Docker Agent to $VERSION" \
+            --add DOCKER_AGENT_VERSION)
 
-          # Create or reset branch
-          git checkout -B "$BRANCH"
-          git add DOCKER_AGENT_VERSION
-          git commit -m "chore: update Docker Agent to $VERSION"
-
-          # Force-push to handle both new and existing branches.
-          # This branch is exclusively managed by this workflow, so --force is safe.
-          git push --force origin "$BRANCH"
+          echo "✅ Signed commit: $COMMIT_OID"
 
           # Check if a PR already exists for this branch
           EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
@@ -127,6 +138,7 @@ jobs:
           else
             echo "Creating new PR"
             gh pr create \
+              --head "$BRANCH" \
               --title "chore: update Docker Agent to $VERSION" \
               --body "$(cat <<EOF
           ## Summary
