@@ -84,7 +84,13 @@ export async function createSignedCommit(
           err !== null && typeof err === 'object' && 'status' in err
             ? (err as { status: number }).status
             : undefined;
-        if (status === 404) {
+        const errMessage =
+          err !== null &&
+          typeof err === 'object' &&
+          typeof (err as Record<string, unknown>).message === 'string'
+            ? (err as { message: string }).message
+            : '';
+        if (status === 404 || (status === 422 && errMessage.includes('Reference does not exist'))) {
           // Branch doesn't exist yet — create it
           await octokit.rest.git.createRef({
             owner,

@@ -223,6 +223,30 @@ describe('createSignedCommit', () => {
     });
   });
 
+  it('falls back to createRef when updateRef returns 422 (Reference does not exist)', async () => {
+    const unprocessableError = Object.assign(new Error('Reference does not exist'), {
+      status: 422,
+    });
+    mockUpdateRef.mockRejectedValueOnce(unprocessableError);
+
+    await createSignedCommit(mockOctokit, {
+      repo: 'owner/repo',
+      branch: 'brand-new-branch',
+      message: 'Force create',
+      baseRef: 'main',
+      force: true,
+      additions: [{ path: 'file.txt', contents: 'dGVzdA==' }],
+    });
+
+    expect(mockUpdateRef).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+    expect(mockCreateRef).toHaveBeenCalledWith({
+      owner: 'owner',
+      repo: 'repo',
+      ref: 'refs/heads/brand-new-branch',
+      sha: HEAD_SHA,
+    });
+  });
+
   it('uses branch ref directly when no baseRef is provided', async () => {
     await createSignedCommit(mockOctokit, {
       repo: 'owner/repo',
