@@ -777,12 +777,14 @@ runs:
           echo "PROMPT_EOF"
         } >> $GITHUB_OUTPUT
 
-    - name: Copy posting format reference
+    - name: Copy reference files
       if: steps.lock-check.outputs.skip != 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-      run: cp "$ACTION_PATH/agents/refs/posting-format.md" /tmp/posting_format.md
+      run: |
+        mkdir -p /tmp/refs
+        cp "$ACTION_PATH"/agents/refs/*.md /tmp/refs/
 
     # ========================================
     # RUN REVIEW using root cagent-action
