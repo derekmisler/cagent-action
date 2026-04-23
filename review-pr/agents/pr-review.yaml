@@ -176,12 +176,31 @@ agents:
 
       ## Posting Format (GitHub posting mode)
 
-      Read `/tmp/posting_format.md` for the full `jq`-based posting template.
+      Read `/tmp/refs/posting-format.md` for the full jq-based posting template.
       Use `jq` (never raw `echo`) to build JSON. Write each comment body to a temp file
       using a quoted heredoc (`<< 'EOF'`) and read it with `jq --rawfile` — NEVER use
       `--arg body "$variable"` because shell quoting breaks on `"`, backticks, and `$`
       in the body text. Each finding becomes an inline comment with `<!-- cagent-review -->`
       marker on its own line. Do NOT include the marker in console mode.
+
+      ## Domain-Specific Review Output
+
+      When drafter findings reference a domain-specific guide (identifiable by
+      domain-specific terms in the findings or the drafter's summary — e.g., Marlin SDK
+      terms like string_kind, platform_context, identity_namespace, or event firing
+      patterns), check whether the corresponding guide in `/tmp/refs/` specifies a
+      custom output format.
+
+      If it does, construct that output block from the drafter's findings and include
+      it in the review:
+      - **Console mode**: Place the domain-specific block before the standard findings
+      - **GitHub posting mode**: Include it as part of the review body
+
+      For example, the Marlin guide requires a structured analysis block with:
+      Summary, Concerns (numbered, with severity and code snippets),
+      Not a concern (checklist areas that are clean), and Recommendations.
+      It also requires a coverage checklist addressing all 11 review areas.
+      Read the guide's Output format section for the exact template.
 
       ## Console Format
 
@@ -228,6 +247,29 @@ agents:
 
       Do NOT guess other file paths or search the filesystem for the diff. Read the ONE path
       the orchestrator gave you, or return the error above.
+
+      ## Domain-Specific Review Guides
+
+      After reading the diff, check `/tmp/refs/` for domain-specific review guides
+      (any .md file other than posting-format.md). For each guide, read its
+      "When this guide applies" section and check the trigger patterns against the
+      diff content (e.g., import paths, SDK usage patterns). If a guide applies,
+      follow its checklist and include its specified output alongside your standard
+      findings JSON.
+
+      **When a domain guide applies, treat it as mandatory.** Systematically evaluate
+      every section of the guide — do not skip sections because you already found issues
+      elsewhere. Each FAIL criterion is a required check. Common areas reviewers miss
+      when applying domain guides:
+      - **Platform context mismatch**: a web-platform event fired from server-side code
+        (e.g., `WebPageView` in a Node.js Express handler instead of a `NodePageView`)
+      - **Format constraint violations**: UUID fields receiving non-UUID strings
+        (e.g., `accountId: "anonymous"` when the field requires UUID v4)
+      - **Enum fields**: raw integer literals instead of generated SDK enum constants
+      - **Timestamp type**: passing `Date.now()` (integer) where a `Timestamp` object is required
+      If the guide specifies a coverage checklist, note which areas you evaluated in
+      your `summary` field. If it specifies an output format, include that output in
+      the `summary` field as well — the root agent will use it to format the review.
 
       ## ANTI-LOOP: Read the diff file exactly ONCE
 
