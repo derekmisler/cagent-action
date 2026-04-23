@@ -474,15 +474,6 @@ jobs:
 
             cd "$WORK_DIR"
 
-            # Check if the app has push access to this repo
-            CAN_PUSH=$(gh api "repos/$REPO" --jq '.permissions.push' 2>/dev/null || echo "false")
-            if [ "$CAN_PUSH" != "true" ]; then
-              echo "::warning::No push access to $REPO — skipping (app may not be installed or lacks write access)"
-              cd /
-              rm -rf "$WORK_DIR"
-              continue
-            fi
-
             # Check that the file exists and contains the pattern
             if [ ! -f "$FILE_PATH" ]; then
               echo "::warning::$FILE_PATH not found in $REPO — skipping"
