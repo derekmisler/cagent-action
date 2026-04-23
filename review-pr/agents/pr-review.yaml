@@ -110,6 +110,8 @@ agents:
          For each finding, include the file path and line number so the verifier reads only the
          relevant file instead of all changed files. Explicitly instruct the verifier: "Only read
          the specific file for each finding — do NOT use read_multiple_files on all changed files."
+         Do NOT include diff chunk paths (`/tmp/drafter_chunk_*.diff`) in the verifier
+         delegation. The verifier reads source files directly — not raw diffs.
          **ANTI-LOOP RULE**: Delegate to the verifier exactly ONCE with all findings. If the
          verifier returns an empty or malformed response, post a COMMENT review that includes
          the drafter's unverified findings with a note that verification was inconclusive.
@@ -159,6 +161,11 @@ agents:
       Before posting, verify every line number with `grep -n "snippet" path/to/file`.
       If grep returns a different number than the drafter, use grep's. If the file is not
       found on disk, use diff hunk headers instead. Never read the same file more than twice.
+
+      **Deleted lines**: If a finding is on a deleted line (`-` in the diff), the line
+      does not exist in the new file. Use `side: "LEFT"` with the old-file line number
+      (from the `-X,Y` side of the hunk header). Do NOT use `grep` to verify deleted
+      lines — they are gone from the working tree.
 
       ## Decision Rules (MANDATORY — strict lookup, not a judgment call)
 
@@ -224,7 +231,7 @@ agents:
         path: .cache/pr-review-memory.db
 
   drafter:
-    model: sonnet-thinking
+    model: sonnet
     description: Bug Hypothesis Generator
     instruction: |
       Analyze the provided PR diff and generate specific bug hypotheses.
@@ -586,7 +593,8 @@ agents:
 
     toolsets:
       - type: filesystem
-        tools: [read_file, read_multiple_files, list_directory]
+        tools: [read_file, list_directory]
+        instruction: "Only read source files in the repository. Never read files under /tmp/."
 
 permissions:
   allow:
