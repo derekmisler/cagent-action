@@ -1,9 +1,18 @@
 # Posting Format (GitHub posting mode)
 
 Convert each CONFIRMED/LIKELY finding to an inline comment object for the `comments` array:
-```json
-{"path": "file.go", "line": 123, "body": "**ISSUE**\n\nDETAILS\n\n<!-- cagent-review -->"}
-```
+- **Added/context lines** (`+` or ` ` in diff) — use `line` with the new-file line number:
+  ```json
+  {"path": "file.go", "line": 123, "body": "**ISSUE**\n\nDETAILS\n\n<!-- cagent-review -->"}
+  ```
+- **Deleted lines** (`-` in diff) — use `side: "LEFT"` with the old-file line number:
+  ```json
+  {"path": "file.go", "line": 45, "side": "LEFT", "body": "**ISSUE**\n\nDETAILS\n\n<!-- cagent-review -->"}
+  ```
+
+The `line` field normally refers to the new file (right side of the diff). Deleted lines
+don't exist in the new file, so GitHub's API returns 422. Adding `side: "LEFT"` tells
+GitHub to anchor the comment on the old file (left side of the diff) instead.
 
 IMPORTANT: Use `jq` to construct the JSON payload. Do NOT manually build JSON strings
 with `echo` — this causes double-escaping of newlines (`\n` rendered as literal text).
@@ -36,6 +45,13 @@ COMMENT_BODY_EOF
 jq --arg path "$file_path" --argjson line "$line_number" \
   --rawfile body /tmp/comment_body.md \
   '. += [{path: $path, line: $line, body: $body}]' \
+  /tmp/review_comments.json > /tmp/review_comments.tmp \
+  && mv /tmp/review_comments.tmp /tmp/review_comments.json
+
+# For deleted lines (- in diff), add side: LEFT with the OLD file line number:
+jq --arg path "$file_path" --argjson line "$old_line_number" --arg side "LEFT" \
+  --rawfile body /tmp/comment_body.md \
+  '. += [{path: $path, line: $line, side: $side, body: $body}]' \
   /tmp/review_comments.json > /tmp/review_comments.tmp \
   && mv /tmp/review_comments.tmp /tmp/review_comments.json
 
