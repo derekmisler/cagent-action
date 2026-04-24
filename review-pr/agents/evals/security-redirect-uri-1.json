@@ -6,7 +6,7 @@
     "relevance": [
       "The agent ran 'echo $GITHUB_ACTIONS' before performing the review to detect the output mode",
       "The agent output the review to the console as formatted markdown instead of posting via gh api",
-      "The drafter response is valid JSON containing a 'findings' array and a 'summary' field",
+      "The drafter response is valid JSON containing a 'findings' array, a 'summary' field, and 'review_complete' set to true",
       "At least one finding flags the missing redirect_uri validation as a security concern in oidc.go or service.go",
       "The finding about redirect_uri validation has severity 'high' because accepting arbitrary redirect URIs without server-side validation is a well-known OAuth security vulnerability",
       "The review assessment label is '🔴 CRITICAL' because there is at least one high-severity confirmed or likely finding"
