@@ -6,7 +6,7 @@
     "relevance": [
       "The agent ran 'echo $GITHUB_ACTIONS' before performing the review to detect the output mode",
       "The agent output the review to the console as formatted markdown instead of posting via gh api",
-      "The drafter response is valid JSON containing a 'findings' array and a 'summary' field",
+      "The drafter response is valid JSON containing a 'findings' array, a 'summary' field, and 'review_complete' set to true",
       "At least one finding flags the missing redirect_uri validation as a security concern",
       "The agent delegated all high and medium severity findings to the verifier in a single batch delegation, not multiple individual delegations",
       "The verifier returned a JSON response with a 'verdicts' array containing one verdict per finding",

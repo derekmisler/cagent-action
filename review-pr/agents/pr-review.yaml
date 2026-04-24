@@ -5,11 +5,6 @@ models:
     provider: anthropic
     model: claude-sonnet-4-6
     max_tokens: 64000
-  sonnet-thinking:
-    provider: anthropic
-    model: claude-sonnet-4-6
-    thinking_budget: adaptive/high
-    max_tokens: 64000
 
 agents:
   root:
@@ -69,10 +64,28 @@ agents:
            branch changes by detecting the base branch, regardless of what the user's
            prompt says:
            ```bash
-           git diff $(git merge-base origin/HEAD HEAD)...HEAD
+           BASE=$(git merge-base upstream/main HEAD 2>/dev/null \
+             || git merge-base upstream/master HEAD 2>/dev/null \
+             || git merge-base origin/HEAD HEAD 2>/dev/null \
+             || git merge-base origin/main HEAD 2>/dev/null \
+             || git merge-base origin/master HEAD 2>/dev/null \
+             || git merge-base main HEAD 2>/dev/null \
+             || git merge-base master HEAD 2>/dev/null)
+           if [ -z "$BASE" ]; then
+             echo "ERROR: Could not determine merge base. No known remote or local branch found." >&2
+             echo "Ensure at least one remote (upstream or origin) is configured." >&2
+             exit 1
+           fi
+           if [ "$BASE" = "$(git rev-parse HEAD)" ]; then
+             echo "ERROR: Merge base resolved to HEAD — diff would be empty." >&2
+             echo "Are you on the default branch? Check out a feature branch first." >&2
+             exit 1
+           fi
+           git diff "$BASE" HEAD
            ```
-           If `origin/HEAD` is not set, fall back to `origin/main`, then `origin/master`.
-           If none of these exist (e.g. no remote), use `main` or `master`.
+           The fallback order prefers `upstream` (forks) over `origin`:
+           `upstream/main`, `upstream/master`, `origin/HEAD`, `origin/main`,
+           `origin/master`, `main`, `master`.
       2. **Read project conventions**: Look for an `AGENTS.md` (or `CLAUDE.md`) file in the
          repository root. Use `read_file` to read it if found. This file contains project-specific
          context such as language versions, build tools, coding conventions, and other guidelines
@@ -83,13 +96,14 @@ agents:
          ```
       3. Use `get_memories` to check for any learned patterns from previous feedback
       4. **Delegate to drafter(s)**:
-         a. Check for pre-split chunk files at `/tmp/drafter_chunk_*.diff`
-            (the CI workflow splits the diff deterministically before the agent runs).
+         a. **First**, check for pre-split chunk files: `ls /tmp/drafter_chunk_*.diff`
+            The CI workflow splits the diff before the agent runs. If chunk files exist,
+            use them directly — do NOT recreate them.
          b. For each chunk file, delegate to the drafter with the file path.
-         c. If no chunk files exist (console mode), read the diff and write it
-            to `/tmp/drafter_chunk_1.diff` yourself, then delegate.
+         c. **Only if no chunk files exist** (e.g., console mode), read the diff and write
+            it to `/tmp/drafter_chunk_1.diff` yourself, then delegate.
          d. Merge all findings arrays into a single list before proceeding.
-         e. Include any relevant learned patterns from memory in each delegation. upstream/main
+         e. Include any relevant learned patterns from memory in each delegation.
 
          ## CRITICAL: How to delegate to the drafter
 
@@ -103,22 +117,25 @@ agents:
          - File history: relevant entries from `/tmp/file_history.txt` (if exists)
          - Available files: run `ls` on directories of changed files so drafter knows real paths
          - Learned patterns: any relevant memories
-      5. Parse the drafter's JSON response. Collect all findings with severity "high" or "medium"
+      5. Parse the drafter's JSON response. Check `review_complete`:
+         - If `review_complete` is `true` AND zero findings → skip directly to step 8 (Decision Rules).
+         - If `review_complete` is `false` AND zero findings → the drafter likely exhausted its context.
+           Post a COMMENT review noting the review was incomplete and do NOT approve.
+         - Otherwise, collect all findings with severity "high" or "medium"
          and delegate them to the `verifier` in a single batch. Skip verification for "low" findings.
          Include the project context (from step 2) in the verifier delegation so it can validate
          findings against project-specific conventions (e.g., language version, available APIs).
-         For each finding, include the file path and line number so the verifier reads only the
-         relevant file instead of all changed files. Explicitly instruct the verifier: "Only read
-         the specific file for each finding — do NOT use read_multiple_files on all changed files."
-         Do NOT include diff chunk paths (`/tmp/drafter_chunk_*.diff`) in the verifier
-         delegation. The verifier reads source files directly — not raw diffs.
+         **The verifier has no file access — you must provide all code context inline.**
+         Before delegating, for each finding use `grep -n -A 15 -B 15 "<key_snippet>" <file>`
+         (or `read_file` + extract) to capture ~30 lines of context around the finding's
+         file:line. Include these code snippets alongside each finding in the delegation message.
+         Do NOT include diff chunk paths (`/tmp/drafter_chunk_*.diff`) in the verifier delegation.
          **ANTI-LOOP RULE**: Delegate to the verifier exactly ONCE with all findings. If the
          verifier returns an empty or malformed response, post a COMMENT review that includes
          the drafter's unverified findings with a note that verification was inconclusive.
          Do NOT approve — surface the raw findings so the author can evaluate them.
          Do NOT retry the delegation.
-         (Empty verdicts usually indicate the verifier exhausted its context budget by reading
-         too many files. The fallback preserves the drafter's analysis for the author.)
+         (The fallback preserves the drafter's analysis for the author.)
       6. Parse the verifier's JSON response (a `verdicts` array). Filter out DISMISSED verdicts and findings where
          `in_changed_code == false` or `in_diff == false`.
       7. **Verify line numbers** before posting (see below)
@@ -272,6 +289,8 @@ agents:
         (e.g., `WebPageView` in a Node.js Express handler instead of a `NodePageView`)
       - **Format constraint violations**: UUID fields receiving non-UUID strings
         (e.g., `accountId: "anonymous"` when the field requires UUID v4)
+      - **Identity type mismatch**: an org ID passed into a user-identity field
+        (e.g., `accountId: orgCtx.OrgUUID` when the field expects the user's hub UUID)
       - **Enum fields**: raw integer literals instead of generated SDK enum constants
       - **Timestamp type**: passing `Date.now()` (integer) where a `Timestamp` object is required
       If the guide specifies a coverage checklist, note which areas you evaluated in
@@ -297,26 +316,31 @@ agents:
 
       ## REQUIRED: Verify Before Reporting
 
-      Before reporting a finding, you MUST use `read_file` to read the full source file
-      when the finding depends on code outside the diff. Common cases where you MUST
-      check the full file first:
+      **High-severity findings**: Use `read_file` to read the full source file and verify
+      that the bug exists. This is mandatory for any finding you intend to mark as "high".
 
-      - **Missing imports**: The import may exist outside the diff context. Read the top
-        of the file to check before flagging.
-      - **Undefined variables/functions**: They may be defined elsewhere in the file or
-        in an imported module. Read the file to confirm.
-      - **Missing error handling**: The caller may handle the error. Check the call site.
-      - **Unused parameters**: They may be used later in the function body outside the
-        diff window.
+      **Medium findings**: Use `read_file` to verify when the diff context is ambiguous
+      or the finding depends on surrounding code not shown in the hunk. Prefer reading
+      the file over dismissing a plausible finding.
 
-      If `read_file` fails (file not on disk), note that in your finding's `details` and
-      reduce severity. Do NOT report "missing import" or "undefined function" findings
-      without checking — these are the #1 source of false positives.
+      **Low findings**: Use the diff context and hunk headers to verify. Only
+      `read_file` if the diff context is genuinely insufficient.
+
+      Common false-positive cases — check the diff context first, read the file only if needed:
+      - **Missing imports**: The import may exist outside the diff context window.
+      - **Undefined variables/functions**: They may be defined elsewhere in the file.
+      - **Missing error handling**: The caller may handle the error.
+      - **Unused parameters**: They may be used later in the function body.
+
+      If you cannot confirm via diff context and `read_file` fails, note that in your
+      finding's `details` and reduce severity. Do NOT report "missing import" or
+      "undefined function" findings without checking — these are the #1 source of
+      false positives.
 
       ## File Reading Guardrails
 
       Never guess paths — use `list_directory`. Stop after 3 consecutive not-found reads.
-      Cap at 20 source file reads (excluding the diff chunk). Only read files referenced
+      Cap at 10 source file reads (excluding the diff chunk). Only read files referenced
       in diff `+` lines. Never read the same file twice (diff chunk: exactly once).
 
       ## CRITICAL RULE: Only Review Changed Code
@@ -369,6 +393,12 @@ agents:
       - **medium**: COULD cause issues — races, leaks, edge cases, error handling gaps.
       - **low**: Code smells. Rarely report.
 
+      **Security findings require extra caution.** Do NOT self-dismiss security findings.
+      Always report them and let the verifier decide. In particular:
+      - UGC/PII truncation at arbitrary offsets (could split sensitive data like emails)
+      - User input in error messages or logs (PII leak risk)
+      - Unsanitized strings in SQL, shell commands, or URLs
+
       ## Output
 
       Return structured JSON (schema-enforced). For each finding: `file` (repo-relative path),
@@ -376,6 +406,8 @@ agents:
       security, logic_error, resource_leak, concurrency, error_handling, data_integrity, other),
       `issue` (one-line summary), `details` (trigger + impact), `in_diff` (true if on a `+` line).
       Also include a `summary` field with a brief overall assessment.
+      Set `review_complete` to `true` if you finished reviewing the entire diff chunk.
+      Set it to `false` if you had to stop early for any reason (context limits, errors, etc.).
 
       ## Line Number Calculation Algorithm
 
@@ -454,38 +486,49 @@ agents:
           summary:
             type: string
             description: Brief overall assessment of the diff quality
-        required: ["findings"]
+          review_complete:
+            type: boolean
+            description: "true if the entire diff chunk was reviewed; false if the review was truncated due to context limits or errors"
+        required: ["findings", "summary", "review_complete"]
         additionalProperties: false
 
     toolsets:
       - type: filesystem
-        tools: [read_file, read_multiple_files, list_directory]
+        tools: [read_file, list_directory]
 
   verifier:
-    model: sonnet-thinking
+    model: sonnet
     description: Hypothesis Verifier
     instruction: |
-      Verify a batch of bug hypotheses using available context.
+      Verify a batch of bug hypotheses using inline code context.
+
+      ## You have NO file access
+
+      The root agent provides ~30 lines of source code context (from `grep -n`) alongside
+      each finding. Use these inline snippets plus the project context (AGENTS.md) to verify
+      findings. Do NOT reference `read_file`, `list_directory`, or any file-reading tools —
+      you have none.
 
       You receive multiple findings from the drafter, along with project context
       (from AGENTS.md or similar) if available. Use this context to verify findings —
-      for example, check the project's language version in build files (go.mod, package.json,
-      etc.) before confirming that an API or language feature doesn't exist.
+      for example, check the project's language version before confirming that an API
+      or language feature doesn't exist.
 
       Verify each one independently.
       Your job is to verify findings, not to filter them out. Default to LIKELY unless you have
       concrete evidence to DISMISS. For each finding:
       - **THE CODE IS ACTUALLY CHANGED IN THIS PR** (if not, DISMISS immediately)
-      - Can you find explicit safeguards in the diff or source files that prevent the bug?
+      - Can you find explicit safeguards in the provided code snippet that prevent the bug?
         Vague reasoning like "the caller probably validates" is NOT grounds for dismissal.
       - Do tests in the diff specifically cover this edge case? General test existence is not enough.
 
-      **DISMISS requires proof.** You must cite the specific code (file + line) that prevents
-      the bug. If you cannot point to concrete mitigation, the verdict is LIKELY at minimum.
+      **DISMISS requires proof.** You must cite the specific code (file + line) from the
+      provided snippet that prevents the bug. If you cannot point to concrete mitigation,
+      the verdict is LIKELY at minimum.
 
       **Security findings have a higher bar for dismissal.** Only DISMISS a security finding
-      if you can show the exact validation/sanitization code that mitigates it. Do not assume
-      that external systems, gateways, or callers provide validation you cannot see.
+      if the provided snippet shows the exact validation/sanitization code that mitigates it.
+      Do not assume that external systems, gateways, or callers provide validation you cannot see.
 
       **DISMISS test-only patterns.** If a finding is about code in a test file, or if the
       only "trigger" for the bug is test code (e.g., a variable reassigned only in tests,
@@ -494,37 +537,13 @@ agents:
       bugs. The drafter's Ignore list excludes test files, so these should not reach you —
       but if they do, dismiss them.
 
-      ## Reading Files for Context
-
-      Try to read the full file to check surrounding context. If the file is not found on disk
-      (e.g., during eval or when reviewing an embedded diff), verify the finding using only
-      the diff context provided to you. Do NOT DISMISS a finding solely because you could not
-      read the file — evaluate it based on the diff content instead. Only attempt to read each
-      file once; if it's not found, move on.
-
-      ## Context Budget Awareness
-
-      You produce structured JSON output. Every file you read consumes context that competes
-      with your ability to reason and produce verdicts. To avoid returning empty verdicts:
-
-      - **Read only the file referenced in each finding** — do NOT read all changed files.
-        The orchestrator tells you which file and line each finding is about. Read only those files.
-      - **Prefer `read_file` over `read_multiple_files`** — read one file at a time, only when
-        needed for the specific finding you're verifying.
-      - **Skip large files you don't need** — if a finding is about `script.sh` line 130,
-        you don't need to read the 500-line workflow YAML that calls it.
-      - **You MUST produce one verdict per finding** — an empty `verdicts` array is never correct
-        when findings were provided. If context is exhausted and you cannot read the relevant file,
-        emit a verdict of LIKELY with a note that the file was not read — do not skip the finding entirely.
-
-      ## File Reading Guardrails
-
-      Never guess paths — use `list_directory`. Stop after 3 consecutive not-found reads.
-      Cap at 10 source file reads. One attempt per file — do not retry with name variations.
-
       CRITICAL: If the bug is in existing code that was NOT changed by this PR,
       set `in_changed_code: false` and `verdict: "DISMISSED"`.
       We only review code that was added/modified in this PR.
+
+      **You MUST produce one verdict per finding** — an empty `verdicts` array is never
+      correct when findings were provided. If the provided snippet is insufficient to fully
+      verify, emit LIKELY with a note explaining what additional context would be needed.
 
       ## Populating Your Response
 
@@ -532,10 +551,19 @@ agents:
       array. Return one verdict per finding you were given. For each verdict:
 
       - `verdict`: One of `"CONFIRMED"`, `"LIKELY"`, `"DISMISSED"`
-        - CONFIRMED: Bug verified — you found no mitigation in the source code
-        - LIKELY: Probable bug — you could not fully verify but found no evidence against it
-        - DISMISSED: Proven not a bug — you can cite the specific code that prevents it, OR
-          the finding is not in code changed by this PR
+        - CONFIRMED: Bug verified — the snippet shows **unambiguous** evidence that the
+          code is wrong and no reasonable interpretation exists where it works correctly.
+          If the code has an explanatory comment about WHY it does something, CONFIRMED
+          requires explaining why the comment is wrong. If you cannot refute the comment,
+          use LIKELY. If the finding depends on framework internals (e.g., Cobra, React,
+          gRPC behavior), default to LIKELY — you cannot verify framework behavior from
+          a snippet alone.
+        - LIKELY: Probable bug — you could not fully verify but found no evidence against it.
+          **This is the default when uncertain.** Use LIKELY when: the bug is plausible but
+          depends on runtime behavior you can't see, OR the code has a comment suggesting
+          the author considered the issue, OR the finding involves framework/library behavior.
+        - DISMISSED: Proven not a bug — you can cite the specific code in the snippet that
+          prevents it, OR the finding is not in code changed by this PR
       - `file`: Preserve the file path from the drafter's finding
       - `line`: Preserve or correct the line number from the drafter's finding
       - `severity`: You may adjust severity from what the drafter assigned based on full context
@@ -590,11 +618,6 @@ agents:
               additionalProperties: false
         required: ["verdicts"]
         additionalProperties: false
-
-    toolsets:
-      - type: filesystem
-        tools: [read_file, list_directory]
-        instruction: "Only read source files in the repository. Never read files under /tmp/."
 
 permissions:
   allow:

@@ -7,7 +7,7 @@
       "The agent ran 'echo $GITHUB_ACTIONS' before performing the review to detect the output mode",
       "The agent output the review to the console as formatted markdown instead of posting via gh api",
       "The agent successfully read the diff from the pr.diff file on disk rather than trying to fetch it via gh or git",
-      "The drafter response is valid JSON containing a 'findings' array and a 'summary' field",
+      "The drafter response is valid JSON containing a 'findings' array, a 'summary' field, and 'review_complete' set to true",
       "The review includes an assessment label (one of '🟢 APPROVE', '🟡 NEEDS ATTENTION', or '🔴 CRITICAL')"
     ]
   },
@@ -17,7 +17,7 @@
         "agentName": "",
         "message": {
           "role": "user",
-          "content": "Review the following PR.\n\n## PR Information\n- **Title**: Add token format validation and cookie auth fallback\n- **Author**: testuser\n- **Branch**: fix/auth-improvements \u2192 main\n- **Files Changed**: 2\n\n## PR Description\nAdds Bearer token format validation to the login handler and adds cookie-based authentication as a fallback in the middleware.\n\n## Changed Files\n\npkg/auth/handler.go\npkg/auth/middleware.go\n\n---\n\n## Instructions\n\nExecute the review pipeline:\n\n1. **Gather**: Read the pre-fetched `pr.diff` file. If missing, run `gh pr diff` (use the full URL, not just the number)\n2. **Draft**: Delegate to `drafter` agent to generate bug hypotheses\n3. **Verify**: For each hypothesis, delegate to `verifier` agent\n4. **Post**: Aggregate findings and post review via `gh api`\n\nOnly report CONFIRMED and LIKELY findings. Always post as COMMENT (never APPROVE or REQUEST_CHANGES)."
+          "content": "Review the following PR.\n\n## PR Information\n- **Title**: Add token format validation and cookie auth fallback\n- **Author**: testuser\n- **Branch**: fix/auth-improvements → main\n- **Files Changed**: 2\n\n## PR Description\nAdds Bearer token format validation to the login handler and adds cookie-based authentication as a fallback in the middleware.\n\n## Changed Files\n\npkg/auth/handler.go\npkg/auth/middleware.go\n\n---\n\n## Instructions\n\nExecute the review pipeline:\n\n1. **Gather**: Read the pre-fetched `pr.diff` file. If missing, run `gh pr diff` (use the full URL, not just the number)\n2. **Draft**: Delegate to `drafter` agent to generate bug hypotheses\n3. **Verify**: For each hypothesis, delegate to `verifier` agent\n4. **Post**: Aggregate findings and post review via `gh api`\n\nOnly report CONFIRMED and LIKELY findings. Always post as COMMENT (never APPROVE or REQUEST_CHANGES)."
         }
       }
     }

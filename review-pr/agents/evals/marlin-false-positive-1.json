@@ -6,7 +6,7 @@
     "relevance": [
       "The agent ran 'echo $GITHUB_ACTIONS' before performing the review to detect the output mode",
       "The agent output the review to the console as formatted markdown instead of posting via gh api",
-      "The drafter response is valid JSON containing a 'findings' array and a 'summary' field",
+      "The drafter response is valid JSON containing a 'findings' array, a 'summary' field, and 'review_complete' set to true",
       "The review does NOT mention Marlin SDK, Marlin review guide, string_kind, or platform_context — these are Marlin-specific concepts that should not appear for a Segment-only PR",
       "The review does NOT produce a Marlin SDK analysis block or Marlin-specific checklist",
       "The review does NOT produce a 'Marlin SDK analysis' block or section heading",

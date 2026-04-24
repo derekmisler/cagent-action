@@ -6,7 +6,7 @@
     "relevance": [
       "The agent ran 'echo $GITHUB_ACTIONS' before performing the review to detect the output mode",
       "The agent output the review to the console as formatted markdown instead of posting via gh api",
-      "The drafter response is valid JSON containing a 'findings' array and a 'summary' field",
+      "The drafter response is valid JSON containing a 'findings' array, a 'summary' field, and 'review_complete' set to true",
       "At least one finding identifies that err.Error() is sent to the analytics platform via the Error field in trackAppInvoke, which could contain PII such as file paths, hostnames, or internal error details",
       "At least one finding identifies that the command array (including user-supplied args) is sent to analytics, which could contain sensitive values like tokens, paths, or URLs",
       "The agent detects the Marlin SDK import pattern (github.com/docker/data-contracts/gen/go/docker/marlin/) and recognizes this as a Marlin producer PR",
