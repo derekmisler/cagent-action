@@ -67,8 +67,6 @@ jobs:
         run: |
           set -e
 
-          CAGENT_DIR="$(pwd)"
-
           if [ -z "$SHA" ] || [ -z "$VERSION" ]; then
             echo "::error::SHA or VERSION is empty (SHA='$SHA', VERSION='$VERSION')"
             exit 1
@@ -144,7 +142,7 @@ jobs:
             echo "Updated reference to ${SHA} # ${VERSION}"
 
             # Create signed commit via API
-            COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node "${CAGENT_DIR}/.github/actions/signed-commit/dist/signed-commit-cli.js" \
+            COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node "$GITHUB_WORKSPACE/dist/signed-commit.js" \
               --repo "$REPO" \
               --branch "$BRANCH" \
               --base-ref main \

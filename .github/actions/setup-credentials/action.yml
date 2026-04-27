@@ -2,4 +2,4 @@ name: 'Setup Credentials'
 description: 'Fetch credentials from AWS Secrets Manager via OIDC and generate GitHub App token'
 runs:
   using: node24
-  main: dist/setup-credentials.js
+  main: ../../../dist/credentials.js
