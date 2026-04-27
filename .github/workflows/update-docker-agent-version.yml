@@ -110,7 +110,7 @@ jobs:
           BRANCH="auto/update-docker-agent-version"
           RELEASE_URL="https://github.com/docker/docker-agent/releases/tag/$VERSION"
 
-          COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node .github/actions/signed-commit/dist/signed-commit-cli.js \
+          COMMIT_OID=$(GITHUB_TOKEN="${GH_TOKEN}" node "$GITHUB_WORKSPACE/dist/signed-commit.js" \
             --repo docker/cagent-action \
             --branch "$BRANCH" \
             --base-ref main \
