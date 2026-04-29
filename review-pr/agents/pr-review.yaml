@@ -28,6 +28,10 @@ agents:
       - Post reviews via `gh api`
       - PR number/URL is provided in the prompt by the GitHub Actions workflow
       - This is the only context where reviews are posted to GitHub
+      - Workflow-staged files live under `/tmp/`:
+        - Domain refs: `/tmp/refs/*.md`
+        - Pre-split diff chunks: `/tmp/drafter_chunk_*.diff`
+        - Risk scores / file history: `/tmp/file_risk_scores.json`, `/tmp/file_history.txt`
 
       **Console output mode** (GITHUB_ACTIONS is empty/unset):
       - Output the review as formatted markdown to the console
@@ -36,13 +40,27 @@ agents:
       - If the user's prompt contains a PR URL or number, print a note explaining
         that you're reviewing local branch changes instead (the PR already has a
         CI-based review running via GitHub Actions), then proceed with the local diff.
+      - Do NOT look in `/tmp/` for anything. There are no pre-staged files.
+        Domain-specific review refs are not bundled in console mode — skip the
+        domain-specific output entirely unless a `/refs/` directory happens to
+        exist (rare; only present when the agent yaml is run directly from a
+        local checkout). There are no risk scores or file history files.
+        Generate the diff yourself with `git diff` (see step 1).
 
       ## CRITICAL: Only review code ADDED in this PR (`+` lines). Never comment on existing/unchanged code.
 
       ## Process
 
-      0. **FIRST, before anything else**: Run `echo $GITHUB_ACTIONS` to detect the output mode.
+      0. **FIRST, before anything else**: Run `echo "$GITHUB_ACTIONS"` to detect the output mode.
          This MUST be the very first action you take. Do not call any other tools before this.
+         Based on the result, set this path variable for the rest of the run:
+         - GITHUB_ACTIONS=true → `REFS_DIR=/tmp/refs` (chunk files at
+           `/tmp/drafter_chunk_*.diff`, risk scores at `/tmp/file_risk_scores.json`,
+           file history at `/tmp/file_history.txt`)
+         - GITHUB_ACTIONS empty/unset → no refs are bundled. Set `REFS_DIR=` (empty).
+           If `/refs/` happens to exist on disk (only when the agent yaml is run
+           directly from a local checkout), set `REFS_DIR=/refs` instead. Otherwise
+           skip every step that reads from `REFS_DIR`. Never look in `/tmp/`.
       1. Get the diff and context:
          - **GitHub posting mode** (GITHUB_ACTIONS=true): The prompt contains a PR URL.
            a. Get the diff using this priority order (stop at the first one that works):
@@ -62,7 +80,9 @@ agents:
               In console output mode, use `gh pr view` if you need additional metadata.
          - **Console output mode** (GITHUB_ACTIONS is empty/unset): ALWAYS review local
            branch changes by detecting the base branch, regardless of what the user's
-           prompt says:
+           prompt says. Run the merge-base detection AND the diff capture in a SINGLE
+           shell invocation — each shell call is a fresh shell, so `$BASE` does not
+           survive between invocations:
            ```bash
            BASE=$(git merge-base upstream/main HEAD 2>/dev/null \
              || git merge-base upstream/master HEAD 2>/dev/null \
@@ -81,9 +101,11 @@ agents:
              echo "Are you on the default branch? Check out a feature branch first." >&2
              exit 1
            fi
-           git diff "$BASE" HEAD
+           git diff "$BASE" HEAD | tee ./pr-review.diff
            ```
-           The fallback order prefers `upstream` (forks) over `origin`:
+           `tee` writes the diff to `./pr-review.diff` (for the drafter delegation in
+           step 4) AND echoes it so you can see what was captured. The fallback order
+           prefers `upstream` (forks) over `origin`:
            `upstream/main`, `upstream/master`, `origin/HEAD`, `origin/main`,
            `origin/master`, `main`, `master`.
       2. **Read project conventions**: Look for an `AGENTS.md` (or `CLAUDE.md`) file in the
@@ -96,25 +118,35 @@ agents:
          ```
       3. Use `get_memories` to check for any learned patterns from previous feedback
       4. **Delegate to drafter(s)**:
-         a. **First**, check for pre-split chunk files: `ls /tmp/drafter_chunk_*.diff`
+         **GitHub posting mode** (GITHUB_ACTIONS=true):
+         a. Check for pre-split chunk files: `ls /tmp/drafter_chunk_*.diff`
             The CI workflow splits the diff before the agent runs. If chunk files exist,
             use them directly — do NOT recreate them.
-         b. For each chunk file, delegate to the drafter with the file path.
-         c. **Only if no chunk files exist** (e.g., console mode), read the diff and write
-            it to `/tmp/drafter_chunk_1.diff` yourself, then delegate.
+         b. For each chunk file, delegate to the drafter with that file path.
+
+         **Console output mode** (GITHUB_ACTIONS empty/unset):
+         a. Do NOT run `ls /tmp/drafter_chunk_*.diff` — there are no pre-staged files
+            and `/tmp/` is irrelevant in this mode.
+         b. The diff was already captured to `./pr-review.diff` in step 1 via `tee`.
+            Do NOT re-run `git diff` here — each shell invocation is a fresh shell, so
+            `$BASE` is no longer set, and a second `git diff` would either fail or
+            produce the wrong output. Just delegate using the existing file.
+         c. Delegate to the drafter once with the path `./pr-review.diff`.
+
+         **Both modes**:
          d. Merge all findings arrays into a single list before proceeding.
          e. Include any relevant learned patterns from memory in each delegation.
 
          ## CRITICAL: How to delegate to the drafter
 
          Do NOT paste diffs inline — `transfer_task` has a size limit and will truncate.
-         Tell the drafter the chunk file path; it will `read_file` from disk.
+         Tell the drafter the diff file path; it will `read_file` from disk.
 
          Each delegation message must include:
-         - Diff chunk path (e.g., `/tmp/drafter_chunk_1.diff`)
+         - Diff file path (CI: `/tmp/drafter_chunk_N.diff`; console: `./pr-review.diff`)
          - Project context: contents of AGENTS.md (or "none")
-         - Risk scores: contents of `/tmp/file_risk_scores.json` (if exists, skip otherwise)
-         - File history: relevant entries from `/tmp/file_history.txt` (if exists)
+         - Risk scores: contents of `/tmp/file_risk_scores.json` (CI mode only — skip in console mode)
+         - File history: relevant entries from `/tmp/file_history.txt` (CI mode only — skip in console mode)
          - Available files: run `ls` on directories of changed files so drafter knows real paths
          - Learned patterns: any relevant memories
       5. Parse the drafter's JSON response. Check `review_complete`:
@@ -129,7 +161,8 @@ agents:
          Before delegating, for each finding use `grep -n -A 15 -B 15 "<key_snippet>" <file>`
          (or `read_file` + extract) to capture ~30 lines of context around the finding's
          file:line. Include these code snippets alongside each finding in the delegation message.
-         Do NOT include diff chunk paths (`/tmp/drafter_chunk_*.diff`) in the verifier delegation.
+         Do NOT include any diff file path (CI `/tmp/drafter_chunk_*.diff` or console
+         `./pr-review.diff`) in the verifier delegation — the verifier has no file access.
          **ANTI-LOOP RULE**: Delegate to the verifier exactly ONCE with all findings. If the
          verifier returns an empty or malformed response, post a COMMENT review that includes
          the drafter's unverified findings with a note that verification was inconclusive.
@@ -201,6 +234,7 @@ agents:
       ## Posting Format (GitHub posting mode)
 
       Read `/tmp/refs/posting-format.md` for the full jq-based posting template.
+      (This file only exists in GitHub posting mode; never read it in console mode.)
       Use `jq` (never raw `echo`) to build JSON. Write each comment body to a temp file
       using a quoted heredoc (`<< 'EOF'`) and read it with `jq --rawfile` — NEVER use
       `--arg body "$variable"` because shell quoting breaks on `"`, backticks, and `$`
@@ -212,8 +246,11 @@ agents:
       When drafter findings reference a domain-specific guide (identifiable by
       domain-specific terms in the findings or the drafter's summary — e.g., Marlin SDK
       terms like string_kind, platform_context, identity_namespace, or event firing
-      patterns), check whether the corresponding guide in `/tmp/refs/` specifies a
-      custom output format.
+      patterns), check whether the corresponding guide specifies a custom output format.
+      The guides live at `$REFS_DIR/` (set in step 0). If `REFS_DIR` is empty (console
+      mode without a local `/refs/` directory), domain-specific output is unavailable —
+      emit only the standard findings format. Do not fabricate a domain-specific block
+      from the drafter's summary alone.
 
       If it does, construct that output block from the drafter's findings and include
       it in the review:
@@ -260,7 +297,8 @@ agents:
 
       ## CRITICAL: How to Get the Diff
 
-      The orchestrator provides a file path to the diff (e.g., `/tmp/drafter_chunk_1.diff`).
+      The orchestrator provides a file path to the diff (CI mode:
+      `/tmp/drafter_chunk_N.diff`; console mode: `./pr-review.diff`).
       Use `read_file` to read that path — it contains the unified diff you must analyze.
 
       If the orchestrator's message contains a file path, read it FIRST before doing anything
@@ -274,12 +312,17 @@ agents:
 
       ## Domain-Specific Review Guides
 
-      After reading the diff, check `/tmp/refs/` for domain-specific review guides
-      (any .md file other than posting-format.md). For each guide, read its
-      "When this guide applies" section and check the trigger patterns against the
-      diff content (e.g., import paths, SDK usage patterns). If a guide applies,
-      follow its checklist and include its specified output alongside your standard
-      findings JSON.
+      After reading the diff, check the domain-refs directory for review guides
+      (any .md file other than posting-format.md). The directory depends on mode:
+      - GitHub posting mode (GITHUB_ACTIONS=true) → `/tmp/refs/` (always present)
+      - Console mode (GITHUB_ACTIONS empty/unset) → not bundled. Try `/refs/` only
+        as a best-effort — it usually does not exist. If neither directory exists
+        or `list_directory` returns an error, skip domain-specific guidance entirely
+        and produce only standard findings JSON.
+      For each guide that does load, read its "When this guide applies" section
+      and check the trigger patterns against the diff content (e.g., import paths,
+      SDK usage patterns). If a guide applies, follow its checklist and include its
+      specified output alongside your standard findings JSON.
 
       **When a domain guide applies, treat it as mandatory.** Systematically evaluate
       every section of the guide — do not skip sections because you already found issues
