@@ -58,6 +58,27 @@ jobs:
       - name: Setup credentials
         uses: ./.github/actions/setup-credentials
 
+      - name: Checkout source for build
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: docker/cagent-action
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build signed-commit CLI
+        run: pnpm install --frozen-lockfile && pnpm build
+
       - name: Discover and update consumer repos
         env:
           GH_TOKEN: ${{ env.GITHUB_APP_TOKEN }}
