@@ -171,7 +171,7 @@ runs:
           LOCK_TIME=$(cat .cache/review-lock/timestamp 2>/dev/null || echo "0")
           NOW=$(date +%s)
           AGE=$(( NOW - LOCK_TIME ))
-          if [ "$AGE" -lt 2500 ]; then  # ~42 min TTL (slightly longer than the 40-min review timeout)
+          if [ "$AGE" -lt 600 ]; then  # 10 min TTL (slightly longer than the 8-min review timeout)
             echo "⏭️ Review already in progress (started ${AGE}s ago) — skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "skip-reason=concurrent" >> $GITHUB_OUTPUT
@@ -798,7 +798,7 @@ runs:
       with:
         agent: ${{ env.ACTION_PATH }}/agents/pr-review.yaml
         prompt: ${{ steps.context.outputs.review_prompt }}
-        timeout: "2400"  # 40 min — allows time for large diffs and retries
+        timeout: "480"  # 8 min — typical reviews finish in <5 min; cap kills hung runs fast
         anthropic-api-key: ${{ inputs.anthropic-api-key }}
         openai-api-key: ${{ inputs.openai-api-key }}
         google-api-key: ${{ inputs.google-api-key }}
@@ -818,7 +818,7 @@ runs:
 
     - name: Release review lock
       if: always() && steps.lock-check.outputs.skip != 'true'
-      continue-on-error: true  # Release failures are safe — stale locks expire via TTL (2500s)
+      continue-on-error: true  # Release failures are safe — stale locks expire via TTL (600s)
       shell: bash
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}

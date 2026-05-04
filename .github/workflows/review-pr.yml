@@ -187,7 +187,7 @@ jobs:
         id: command
         shell: bash
         env:
-          ISSUE_PR: ${{ github.event.issue.pull_request }}
+          ISSUE_PR: ${{ github.event.issue.pull_request.url }}
           COMMENT_TYPE: ${{ github.event.comment.user.type }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -403,7 +403,9 @@ jobs:
           CTX_PR_NUMBER: ${{ needs.resolve-context.outputs.pr-number }}
           CTX_PR_HEAD_SHA: ${{ needs.resolve-context.outputs.pr-head-sha }}
           # Direct path (same-repo pull_request_review_comment)
-          EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_COMMENT_JSON: ${{ toJSON(github.event.comment) }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ -n "$COMMENT_JSON" ]; then
@@ -413,9 +415,9 @@ jobs:
             echo "pr-head-sha=$CTX_PR_HEAD_SHA" >> $GITHUB_OUTPUT
           elif [ "$EVENT_NAME" = "pull_request_review_comment" ]; then
             # Direct path: comment data from event payload
-            echo '${{ toJSON(github.event.comment) }}' > /tmp/reply_comment.json
-            echo "pr-number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "pr-head-sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            printf '%s' "$EVENT_COMMENT_JSON" > /tmp/reply_comment.json
+            echo "pr-number=$EVENT_PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "pr-head-sha=$EVENT_PR_HEAD_SHA" >> $GITHUB_OUTPUT
           else
             echo "::error::No comment data available"
             exit 1
