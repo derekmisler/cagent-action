@@ -48,7 +48,7 @@ describe.skipIf(!credentials)('app-token integration', () => {
 
   it('resolves the GitHub App identity', async () => {
     const { data } = await createOctokit().apps.getAuthenticated();
-    expect(data.slug).toBe('docker-agent');
+    expect(data?.slug).toBe('docker-agent');
   }, 10_000);
 
   it('fetches installation permissions', async () => {

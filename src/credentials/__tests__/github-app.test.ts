@@ -65,9 +65,11 @@ describe('fetchGitHubAppCredentials', () => {
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
-  it('returns gracefully when AWS is unavailable', async () => {
+  it('throws when AWS is unavailable', async () => {
     mockSend.mockRejectedValue(new Error('network error'));
-    await expect(fetchGitHubAppCredentials()).resolves.toBeUndefined();
+    await expect(fetchGitHubAppCredentials()).rejects.toThrow(
+      'AWS Secrets Manager call failed for required secret docker-agent-action/github-app: Error: network error',
+    );
     expect(core.exportVariable).not.toHaveBeenCalled();
   });
 

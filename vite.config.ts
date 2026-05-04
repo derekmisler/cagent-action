@@ -15,11 +15,20 @@ export default defineConfig({
   define: {
     'process.env': 'process.env',
   },
+  resolve: {
+    // Force Node.js-variant of packages like @aws-sdk/* instead of the browser variant.
+    // Without this Vite's bundler picks the "browser" export condition, which pulls in
+    // @aws-crypto/sha256-browser and references `document`, breaking the GitHub Action.
+    // `ssr` is intentionally omitted — AWS SDK v3 uses the `node` condition key, not `ssr`.
+    conditions: ['node', 'import', 'module', 'default'],
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
     target: 'node24',
+    // Suppress Vite's browser modulepreload polyfill — we target Node.js only.
+    modulePreload: false,
     rollupOptions: {
       input: entries,
       output: {

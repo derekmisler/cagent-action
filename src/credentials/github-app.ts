@@ -21,8 +21,7 @@ export async function fetchGitHubAppCredentials(
     const res = await client.send(new GetSecretValueCommand({ SecretId: SECRET_ID }));
     secretJson = res.SecretString ?? '';
   } catch (err) {
-    core.info(`AWS Secrets Manager unavailable, skipping ${SECRET_ID}: ${err}`);
-    return;
+    throw new Error(`AWS Secrets Manager call failed for required secret ${SECRET_ID}: ${err}`);
   }
 
   core.setSecret(secretJson);

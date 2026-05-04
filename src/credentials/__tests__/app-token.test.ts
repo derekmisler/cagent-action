@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import { createAppAuth } from '@octokit/auth-app';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { generateAppToken } from '../app-token.js';
 
 vi.mock('@actions/core');
@@ -51,7 +52,7 @@ beforeEach(() => {
   mockGetOrgInstallation.mockResolvedValue({ data: { id: 42 } });
   mockGetInstallation.mockResolvedValue({ data: { permissions: MOCK_PERMISSIONS } });
   mockAuth.mockResolvedValue({ token: 'fake-token' });
-  vi.mocked(createAppAuth).mockReturnValue(mockAuth as ReturnType<typeof createAppAuth>);
+  vi.mocked(createAppAuth).mockReturnValue(mockAuth as unknown as ReturnType<typeof createAppAuth>);
 
   delete process.env.GITHUB_APP_ID;
   delete process.env.GITHUB_APP_PRIVATE_KEY;
