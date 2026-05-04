@@ -74,6 +74,7 @@ permissions:
   pull-requests: write
   issues: write
   id-token: write
+  actions: read   # download-artifact across workflow_run boundary
 
 jobs:
   resolve-context:
@@ -292,7 +293,7 @@ jobs:
 
       - name: Create check run
         if: |
-          steps.pr.outputs.source == 'event' &&
+          (steps.pr.outputs.source == 'event' || steps.pr.outputs.source == 'trigger') &&
           steps.membership.outputs.is_member == 'true'
         id: create-check
         continue-on-error: true

@@ -61,12 +61,13 @@ async function main() {
 
   // (a) App-level permissions — what the App is configured to request
   const { data: app } = await appOctokit.apps.getAuthenticated();
-  console.log(`\nApp name: ${app.name}`);
-  console.log(`App slug: ${app.slug}`);
-  console.log(`App settings: https://github.com/organizations/${ORG}/settings/apps/${app.slug}`);
-  console.log('\nApp-level permissions (what the app is configured to request):');
-  console.log(JSON.stringify(app.permissions, null, 2));
-
+  if (app) {
+    console.log(`\nApp name: ${app.name}`);
+    console.log(`App slug: ${app.slug}`);
+    console.log(`App settings: https://github.com/organizations/${ORG}/settings/apps/${app.slug}`);
+    console.log('\nApp-level permissions (what the app is configured to request):');
+    console.log(JSON.stringify(app.permissions, null, 2));
+  }
   // 2. Get org installation ID
   let installationId: number;
   try {
