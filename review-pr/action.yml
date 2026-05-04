@@ -87,9 +87,12 @@ runs:
     - name: Resolve PR number and comment ID
       id: resolve-context
       shell: bash
+      env:
+        PR_NUMBER_INPUT: ${{ inputs.pr-number }}
+        COMMENT_ID_INPUT: ${{ inputs.comment-id }}
       run: |
         # Resolve PR number: input > pull_request event > issue event
-        PR_NUMBER="${{ inputs.pr-number }}"
+        PR_NUMBER="$PR_NUMBER_INPUT"
         if [ -z "$PR_NUMBER" ]; then
           PR_NUMBER="${{ github.event.pull_request.number }}"
         fi
@@ -104,7 +107,7 @@ runs:
         echo "✅ Resolved PR number: $PR_NUMBER"
 
         # Resolve comment ID: input > comment event (optional, for reactions)
-        COMMENT_ID="${{ inputs.comment-id }}"
+        COMMENT_ID="$COMMENT_ID_INPUT"
         if [ -z "$COMMENT_ID" ]; then
           COMMENT_ID="${{ github.event.comment.id }}"
         fi
@@ -203,8 +206,10 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
+        REPO: ${{ github.repository }}
+        COMMENT_ID: ${{ steps.resolve-context.outputs.comment-id }}
       run: |
-        gh api repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions \
+        gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" \
           -X POST -f content='eyes' || true
 
     - name: Get PR information
@@ -628,8 +633,9 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
+        REPO: ${{ github.repository }}
       run: |
-        ARTIFACTS=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=pr-review-feedback" \
+        ARTIFACTS=$(gh api "repos/$REPO/actions/artifacts?name=pr-review-feedback" \
           --jq '.artifacts[].id' 2>/dev/null || echo "")
 
         if [ -z "$ARTIFACTS" ]; then
@@ -644,7 +650,7 @@ runs:
 
         for AID in $ARTIFACTS; do
           # Download artifact zip
-          gh api "repos/${{ github.repository }}/actions/artifacts/$AID/zip" > "feedback_$AID.zip" 2>/dev/null || continue
+          gh api "repos/$REPO/actions/artifacts/$AID/zip" > "feedback_$AID.zip" 2>/dev/null || continue
           unzip -o "feedback_$AID.zip" -d "pending_feedback/" 2>/dev/null || continue
 
           if [ -f pending_feedback/feedback.json ]; then
@@ -660,7 +666,7 @@ runs:
           rm -f pending_feedback/feedback.json
 
           # Delete processed artifact
-          gh api "repos/${{ github.repository }}/actions/artifacts/$AID" -X DELETE 2>/dev/null || true
+          gh api "repos/$REPO/actions/artifacts/$AID" -X DELETE 2>/dev/null || true
         done
 
         if [ "$COUNT" -gt 0 ]; then
@@ -907,11 +913,13 @@ runs:
       env:
         GH_TOKEN: ${{ steps.resolve-token.outputs.token }}
         EXIT_CODE: ${{ steps.run-review.outputs.exit-code }}
+        REPO: ${{ github.repository }}
+        COMMENT_ID: ${{ steps.resolve-context.outputs.comment-id }}
       run: |
         if [ "$EXIT_CODE" != "0" ]; then
-          gh api "repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions" \
+          gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" \
             -X POST -f content='confused' || true
         else
-          gh api "repos/${{ github.repository }}/issues/comments/${{ steps.resolve-context.outputs.comment-id }}/reactions" \
+          gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" \
             -X POST -f content='+1' || true
         fi
