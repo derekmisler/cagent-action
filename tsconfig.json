@@ -14,6 +14,13 @@
     "target": "ES2024",
     "types": ["node"]
   },
-  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "vite.config.ts", "scripts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__tests__/**",
+    "tsup.config.ts",
+    "vitest.config.ts",
+    "scripts"
+  ],
   "include": ["src/**/*"]
 }
