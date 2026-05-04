@@ -22,7 +22,10 @@ export default defineConfig({
   // Keep .js extension so the action can `node dist/credentials.js` directly.
   // Without this tsup would emit .mjs for ESM format.
   outExtension: () => ({ js: '.js' }),
-  sourcemap: true,
+  // Sourcemaps disabled: this action is consumed via `uses: docker/cagent-action@v1`,
+  // which clones the tagged release including dist/. Sourcemaps would add ~10MB to every
+  // consumer clone with no runtime benefit (Node doesn't load them by default).
+  sourcemap: false,
   clean: true,
   // Disable code splitting so each entry is fully self-contained.
   splitting: false,
