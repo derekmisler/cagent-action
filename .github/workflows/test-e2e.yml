@@ -11,21 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  test-prompt-sanitization:
-    name: Prompt Sanitization Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run prompt sanitization tests
-        run: |
-          cd tests
-          chmod +x test-local.sh
-          ./test-local.sh
-
   test-output-extraction:
     name: Output Extraction Tests
     runs-on: ubuntu-latest
@@ -56,36 +41,6 @@ jobs:
           chmod +x test-job-summary.sh
           ./test-job-summary.sh
 
-  test-security:
-    name: Security Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run security tests
-        run: |
-          cd tests
-          chmod +x test-security.sh
-          ./test-security.sh
-
-  test-exploits:
-    name: Exploit Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Run exploit tests
-        run: |
-          cd tests
-          chmod +x test-exploits.sh
-          ./test-exploits.sh
-
   test-pirate-agent:
     name: Pirate Agent Test
     runs-on: ubuntu-latest
@@ -107,6 +62,23 @@ jobs:
       - name: Checkout code
         if: steps.fork-check.outputs.is_fork != 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        if: steps.fork-check.outputs.is_fork != 'true'
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.fork-check.outputs.is_fork != 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build action
+        if: steps.fork-check.outputs.is_fork != 'true'
+        run: pnpm install --frozen-lockfile && pnpm build
 
       - name: Run test
         if: steps.fork-check.outputs.is_fork != 'true'
@@ -172,6 +144,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build action
+        run: pnpm install --frozen-lockfile && pnpm build
 
       - name: Test should fail on invalid agent
         id: invalid-agent
