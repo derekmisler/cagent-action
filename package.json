@@ -32,6 +32,9 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "fast-xml-parser": "^5.3.5"
+    }
   }
 }
