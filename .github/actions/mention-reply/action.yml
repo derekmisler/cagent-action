@@ -1,0 +1,17 @@
+name: 'Mention Reply Handler'
+description: 'Parse event context, verify org membership, and build prompt for @docker-agent mention replies'
+inputs:
+  github-token:
+    description: 'GitHub token for posting reactions and rejection replies'
+    required: true
+  org-membership-token:
+    description: 'PAT with read:org scope for docker org membership checks'
+    required: true
+outputs:
+  should-reply:
+    description: "'true' if the reply agent should run; 'false' if the event was skipped or rejected"
+  prompt:
+    description: 'Formatted context prompt for the mention-reply agent'
+runs:
+  using: 'node20'
+  main: '../../../dist/mention-reply.js'
