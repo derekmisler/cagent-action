@@ -218,8 +218,6 @@ PR number and comment ID are auto-detected from `github.event` when not provided
 | `nebius-api-key`           | Nebius API key                                                   | No\*     |
 | `mistral-api-key`          | Mistral API key                                                  | No\*     |
 | `github-token`             | GitHub token                                                     | No       |
-| `github-app-id`            | GitHub App ID for custom identity                                | No       |
-| `github-app-private-key`   | GitHub App private key                                           | No       |
 | `add-prompt-files`         | Comma-separated files to append to the prompt                    | No       |
 
 \*API keys are optional when using the reusable workflow (credentials are fetched via OIDC). Only required when using the composite action directly without OIDC.
