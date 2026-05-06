@@ -76,6 +76,7 @@ jobs:
       pr-number: ${{ steps.read.outputs.pr-number }}
       pr-head-sha: ${{ steps.read.outputs.pr-head-sha }}
       comment-json: ${{ steps.read.outputs.comment-json }}
+      comment-author: ${{ steps.read.outputs.comment-author }}
     steps:
       - name: Setup credentials
         uses: docker/cagent-action/.github/actions/setup-credentials@2369328cd25777eb0a4ff959a399b6d1a5204fc7 # v1.4.4
@@ -120,6 +121,7 @@ jobs:
               jq -c '.' /tmp/context/comment.json
               echo 'COMMENT_JSON_EOF'
             } >> $GITHUB_OUTPUT
+            echo "comment-author=$(jq -r '.user.login' /tmp/context/comment.json)" >> $GITHUB_OUTPUT
           fi
 
   review:
@@ -128,7 +130,7 @@ jobs:
       always() && (
         (github.event_name == 'issue_comment' && github.event.issue.pull_request) ||
         (github.event_name == 'pull_request' && github.event.action != 'review_requested' && github.event.sender.type != 'Bot') ||
-        (github.event_name == 'pull_request' && github.event.action == 'review_requested' && github.event.requested_reviewer.login == 'docker-agent' && github.event.sender.type != 'Bot') ||
+        (github.event_name == 'pull_request' && github.event.action == 'review_requested' && github.event.requested_reviewer.login == 'docker-agent') ||
         inputs.pr-number != '' ||
         (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request')
       )
@@ -138,6 +140,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      checks: write
     outputs:
       exit-code: ${{ steps.run-review.outputs.exit-code }}
 
@@ -181,19 +184,11 @@ jobs:
         shell: bash
         env:
           ISSUE_PR: ${{ github.event.issue.pull_request.url }}
-          COMMENT_TYPE: ${{ github.event.comment.user.type }}
-          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           if [ -z "$ISSUE_PR" ]; then
             echo "is_review=false" >> $GITHUB_OUTPUT
             echo "⏭️ Not a PR issue comment, skipping"
-            exit 0
-          fi
-
-          if [ "$COMMENT_TYPE" = "Bot" ] && [ "$COMMENT_AUTHOR" != "docker-agent" ]; then
-            echo "is_review=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Bot user ($COMMENT_AUTHOR) is not trusted, skipping"
             exit 0
           fi
 
@@ -238,7 +233,6 @@ jobs:
           PR_SOURCE: ${{ steps.pr.outputs.source }}
           ORG: docker
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
-          COMMENT_AUTHOR_TYPE: ${{ github.event.comment.user.type }}
         with:
           github-token: ${{ env.ORG_MEMBERSHIP_TOKEN }}
           script: |
@@ -247,14 +241,7 @@ jobs:
 
             let username;
             if (source === 'event') {
-              const userType = process.env.COMMENT_AUTHOR_TYPE;
-              const login = process.env.COMMENT_AUTHOR;
-              if (userType === 'Bot') {
-                core.setOutput('is_member', 'true');
-                console.log(`✅ ${login} is a Bot — allowing /review command`);
-                return;
-              }
-              username = login;
+              username = process.env.COMMENT_AUTHOR;
             } else {
               const { data: pr } = await github.rest.pulls.get({
                 owner: context.repo.owner,
@@ -293,7 +280,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          github-token: ${{ github.token }}
           script: |
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const { data: pr } = await github.rest.pulls.get({
@@ -354,7 +341,7 @@ jobs:
           CHECK_ID: ${{ steps.create-check.outputs.check-id }}
           JOB_STATUS: ${{ job.status }}
         with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          github-token: ${{ github.token }}
           script: |
             const conclusion = process.env.JOB_STATUS === 'cancelled' ? 'cancelled' : process.env.JOB_STATUS === 'success' ? 'success' : 'failure';
             try {
@@ -374,8 +361,8 @@ jobs:
     needs: [resolve-context]
     if: |
       always() && needs.resolve-context.result != 'failure' && (
-        (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id) ||
-        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment')
+        (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id && github.event.comment.user.login != 'docker-agent' && github.event.comment.user.type != 'Bot') ||
+        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment' && needs.resolve-context.outputs.comment-author != 'docker-agent')
       )
     runs-on: ubuntu-latest
     permissions:
@@ -440,26 +427,11 @@ jobs:
 
           echo "comment-id=$(jq -r '.id' /tmp/reply_comment.json)" >> $GITHUB_OUTPUT
           echo "comment-author=$(jq -r '.user.login' /tmp/reply_comment.json)" >> $GITHUB_OUTPUT
-          echo "comment-author-type=$(jq -r '.user.type' /tmp/reply_comment.json)" >> $GITHUB_OUTPUT
           # Use // empty so null in_reply_to_id becomes empty string (not the literal "null")
           echo "parent-id=$(jq -r '.in_reply_to_id // empty' /tmp/reply_comment.json)" >> $GITHUB_OUTPUT
           jq -r '.body' /tmp/reply_comment.json > /tmp/comment_body.txt
 
-      - name: Check bot guard
-        id: bot-guard
-        shell: bash
-        run: |
-          AUTHOR_TYPE="${{ steps.feedback.outputs.comment-author-type }}"
-          AUTHOR="${{ steps.feedback.outputs.comment-author }}"
-          if [ "$AUTHOR_TYPE" = "Bot" ]; then
-            echo "⏭️ Skipping reply to bot comment from $AUTHOR (prevents cascade)"
-            echo "is_bot=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_bot=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Check if reply is to agent comment
-        if: steps.bot-guard.outputs.is_bot != 'true'
         id: check
         shell: bash
         env:
@@ -479,19 +451,19 @@ jobs:
             exit 0
           }
           # Validate required fields exist before extracting
-          if ! echo "$parent" | jq -e '.user.type and .body' > /dev/null 2>&1; then
+          if ! echo "$parent" | jq -e '.user.login and .body' > /dev/null 2>&1; then
             echo "::warning::Parent comment has unexpected structure" >&2
             echo "is_agent=false" >> $GITHUB_OUTPUT
             exit 0
           fi
           body=$(echo "$parent" | jq -r '.body')
-          parent_user_type=$(echo "$parent" | jq -r '.user.type')
+          parent_user_login=$(echo "$parent" | jq -r '.user.login')
 
-          # Defense-in-depth: verify the root comment was posted by a Bot (agent) AND
+          # Defense-in-depth: verify the root comment was posted by docker-agent AND
           # contains the review marker but NOT the reply marker (substring overlap).
-          # The user.type check prevents matching human comments that happen to contain
+          # The login check prevents matching human comments that happen to contain
           # the marker text (e.g., in discussions about the review system).
-          if [ "$parent_user_type" = "Bot" ] && \
+          if [ "$parent_user_login" = "docker-agent" ] && \
              echo "$body" | grep -q "<!-- cagent-review -->" && \
              ! echo "$body" | grep -q "<!-- cagent-review-reply -->"; then
             echo "is_agent=true" >> $GITHUB_OUTPUT
@@ -522,7 +494,7 @@ jobs:
           fi
 
       - name: Setup credentials
-        if: steps.bot-guard.outputs.is_bot != 'true' && steps.check.outputs.is_agent == 'true'
+        if: steps.check.outputs.is_agent == 'true'
         uses: docker/cagent-action/.github/actions/setup-credentials@2369328cd25777eb0a4ff959a399b6d1a5204fc7 # v1.4.4
 
       - name: Check authorization
@@ -650,10 +622,9 @@ jobs:
                 if [ "$comment_id" = "$TRIGGER_COMMENT_ID" ]; then
                   continue
                 fi
-                user_type=$(echo "$all_comments" | jq -r ".[$i].user.type") || continue
                 author=$(echo "$all_comments" | jq -r ".[$i].user.login") || continue
                 body=$(echo "$all_comments" | jq -r ".[$i].body") || continue
-                if [ "$user_type" = "Bot" ]; then
+                if [ "$author" = "docker-agent" ]; then
                   echo "[YOUR PREVIOUS REPLY by @$author]"
                 else
                   echo "[REPLY by @$author]"

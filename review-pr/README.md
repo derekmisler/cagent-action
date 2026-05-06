@@ -2,6 +2,8 @@
 
 AI-powered pull request review using a multi-agent system. Analyzes code changes, posts inline comments, and learns from your feedback.
 
+> **Primary trigger:** Add `docker-agent` as a reviewer in the PR sidebar — the review starts automatically. The `/review` comment is always available for re-triggering.
+
 ## Quick Start
 
 ### Same-repo PRs (1 workflow)
@@ -112,17 +114,40 @@ jobs:
 #### How the two workflows interact
 
 ```
-pull_request / pull_request_review_comment
+pull_request (opened / ready_for_review / review_requested)
   → pr-review-trigger.yml (saves context as artifact, no secrets needed)
   → completes
   → workflow_run fires
-  → pr-review.yml (downloads artifact, routes to review or reply)
+  → pr-review.yml (downloads artifact, runs review)
 
-/review comment
+pull_request_review_comment
+  → pr-review-trigger.yml (saves context as artifact)
+  → workflow_run fires
+  → pr-review.yml (downloads artifact, routes to reply)
+
+/review comment  –OR–  @docker-agent mention
   → pr-review.yml directly (issue_comment has full permissions)
 ```
 
-The `issue_comment` event (`/review` command) always has full permissions regardless of fork status, so it works directly without the trigger workflow.
+Adding `docker-agent` as a reviewer fires a `pull_request` event with `action: review_requested`, which follows the trigger-workflow path above. The `issue_comment` event (`/review` command and `@docker-agent` mentions) always has full permissions regardless of fork status, so those paths work directly without the trigger workflow.
+
+### Choosing a trigger mode
+
+The `pull_request` trigger types in your calling workflow control how often reviews run. Two modes are supported — the examples above use **Mode B**:
+
+**Mode B — recommended default:**
+```yaml
+pull_request:
+  types: [opened, ready_for_review, review_requested]
+```
+Reviews run when a PR is opened or marked ready for review. After the initial review, further `pull_request`-triggered reviews only run when `docker-agent` is explicitly re-requested as a reviewer. Use `/review` to re-trigger ad-hoc at any time.
+
+**Mode A — continuous re-review on every push:**
+```yaml
+pull_request:
+  types: [opened, ready_for_review, synchronize, review_requested]
+```
+Adds `synchronize` to also trigger on every push to the PR branch. Opt in if your team wants the reviewer to automatically re-examine every update, at the cost of more workflow runs.
 
 ### Customizing
 
@@ -133,13 +158,13 @@ with:
 
 ### What you get
 
-| Trigger                 | Behavior                                                           |
-| ----------------------- | ------------------------------------------------------------------ |
-| PR opened/ready         | Auto-reviews the PR                                                |
-| Reviewer requested      | Auto-reviews when `docker-agent` is added as reviewer          |
-| `/review` comment       | Manual review (shows as a check run if `checks: write` is granted) |
-| Reply to review comment | Responds in-thread and captures feedback to improve future reviews |
-| `@docker-agent` mention | Answers questions and clarifies review findings in PR comments  |
+| Trigger                              | Behavior                                                                                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Request review from `docker-agent`   | **Primary trigger.** Add `docker-agent` as a reviewer in the PR sidebar — review starts automatically, shown as a check run.            |
+| PR opened/ready                      | Auto-reviews when a PR is opened or marked ready for review.                                                                             |
+| `/review` comment                    | Re-trigger a review, or trigger manually when auto-review hasn't run (e.g. after a force-push). Shows as a check run if `checks: write` is granted. |
+| Reply to review comment              | Responds in-thread and captures feedback to improve future reviews.                                                                      |
+| `@docker-agent` mention              | Answers questions and clarifies review findings in PR comments.                                                                          |
 
 > **Built-in defense-in-depth:**
 >
