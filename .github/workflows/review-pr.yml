@@ -199,8 +199,38 @@ jobs:
             echo "⏭️ Not a /review command, skipping"
           fi
 
+      - name: Classify trigger type
+        id: trigger-type
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+          RESOLVE_CONTEXT_RESULT: ${{ needs.resolve-context.result }}
+          IS_REVIEW_COMMAND: ${{ steps.command.outputs.is_review }}
+        run: |
+          # Classify whether this is a user-requested or automatic review.
+          # User-requested triggers bypass the draft check only; org-membership
+          # check still applies on all paths via the downstream step.
+          if [ "$EVENT_NAME" = "issue_comment" ] && [ "$IS_REVIEW_COMMAND" = "true" ]; then
+            echo "user_requested=true" >> $GITHUB_OUTPUT
+            echo "🎯 Trigger type: user-requested (issue_comment /review command)"
+          elif [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "review_requested" ]; then
+            echo "user_requested=true" >> $GITHUB_OUTPUT
+            echo "🎯 Trigger type: user-requested (review_requested)"
+          elif [ -n "$INPUT_PR_NUMBER" ]; then
+            echo "user_requested=true" >> $GITHUB_OUTPUT
+            echo "🎯 Trigger type: user-requested (explicit pr-number input)"
+          elif [ "$RESOLVE_CONTEXT_RESULT" = "success" ]; then
+            echo "user_requested=true" >> $GITHUB_OUTPUT
+            echo "🎯 Trigger type: user-requested (trigger path via resolve-context)"
+          else
+            echo "user_requested=false" >> $GITHUB_OUTPUT
+            echo "🤖 Trigger type: automatic (pull_request event)"
+          fi
+
       - name: Check if PR is draft
-        if: github.event_name != 'issue_comment'
+        if: github.event_name != 'issue_comment' && steps.trigger-type.outputs.user_requested != 'true'
         id: draft
         shell: bash
         env:
