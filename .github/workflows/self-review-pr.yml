@@ -1,5 +1,11 @@
 name: Self PR Review
 on:
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: "PR number to review (e2e test — runs review-pr.yml from this branch)"
+        required: true
+        type: string
   issue_comment:
     types: [ created ]
   workflow_run:
@@ -40,6 +46,7 @@ jobs:
   review:
     name: Review
     if: |
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'issue_comment' ||
       github.event.workflow_run.conclusion == 'success'
     uses: ./.github/workflows/review-pr.yml
@@ -51,5 +58,6 @@ jobs:
       id-token: write # Required for OIDC authentication to AWS Secrets Manager
       actions: read # Download artifacts from trigger workflow
     with:
+      pr-number: ${{ inputs.pr-number || '' }}
       trigger-run-id: ${{ github.event_name == 'workflow_run' && format('{0}',
         github.event.workflow_run.id) || '' }}

@@ -845,13 +845,10 @@ runs:
         echo "review-url=$REVIEW_URL" >> $GITHUB_OUTPUT
 
         if [ "$SKIP_REASON" = "concurrent" ]; then
+          # Stay silent — the 👀 reaction on the triggering comment (added by the
+          # run that won the lock) is sufficient feedback that a review is running.
+          # Posting a comment here creates noise and can trigger a comment loop.
           STATUS="⏭️ **Review skipped** — another review is already in progress"
-          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f body="⏭️ **Review skipped** — another review for this PR is already in progress (started ${LOCK_AGE}s ago). Only one review runs at a time to avoid duplicate comments. The in-progress review will post its results when complete." \
-            2>&1 || {
-              echo "::warning::Failed to post skip comment to PR"
-              STATUS="${STATUS} (⚠️ failed to notify on PR)"
-            }
         elif [ -z "$EXIT_CODE" ]; then
           STATUS="⏭️ **Review skipped** — agent did not run"
         elif [ "$EXIT_CODE" != "0" ]; then
