@@ -13,8 +13,10 @@ const src = (name: string) => {
 };
 const entry = {
   credentials: src('credentials'),
+  'filter-diff': src('filter-diff'),
   main: src('main'),
   'mention-reply': src('mention-reply'),
+  'score-risk': src('score-risk'),
   security: src('security'),
   'signed-commit': src('signed-commit'),
 };

@@ -59,6 +59,10 @@ inputs:
     description: "Skip the built-in authorization check (caller already verified auth)"
     required: false
     default: "false"
+  exclude-paths:
+    description: 'Newline-separated list of path prefixes to strip from the diff before chunking. Files matching these prefixes are excluded from review entirely.'
+    required: false
+    default: ''
 
 outputs:
   exit-code:
@@ -233,6 +237,14 @@ runs:
           fi
         fi
 
+    - name: Filter excluded paths from diff
+      if: hashFiles('pr.diff') != '' && inputs.exclude-paths != ''
+      shell: bash
+      env:
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
+      run: |
+        node "$ACTION_PATH/dist/filter-diff.js" pr.diff "$EXCLUDE_PATHS"
+
     - name: Split diff into chunks
       if: hashFiles('pr.diff') != ''
       id: chunk-diff
@@ -307,63 +319,11 @@ runs:
     - name: Score file risk
       if: hashFiles('pr.diff') != ''
       shell: bash
+      env:
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
       run: |
-        # Extract per-file diff stats (added lines, hunk count)
-        awk '
-        /^diff --git/ {
-          if (file != "") print file, added, hunks
-          file = $0; sub(/.*b\//, "", file)
-          added = 0; hunks = 0
-        }
-        /^@@/ { hunks++ }
-        /^\+[^+]/ { added++ }
-        END { if (file != "") print file, added, hunks }
-        ' pr.diff > /tmp/file_diff_stats.txt
-
-        # Build final scores
-        jq -n '{}' > /tmp/file_risk_scores.json
-        while read -r file added hunks; do
-          SCORE=0
-
-          # Security-sensitive paths: +2
-          if echo "$file" | grep -qiE 'auth|security|crypto|session|secret|token|password|credential'; then
-            SCORE=$((SCORE + 2))
-          fi
-
-          # Large change (>100 added lines): +2
-          if [ "$added" -gt 100 ]; then
-            SCORE=$((SCORE + 2))
-          fi
-
-          # Many hunks (>3): +1
-          if [ "$hunks" -gt 3 ]; then
-            SCORE=$((SCORE + 1))
-          fi
-
-          # Test/doc/config files: score = 0
-          if echo "$file" | grep -qiE '_test\.go$|\.test\.[tj]sx?$|\.spec\.[tj]sx?$|test_.*\.py$|\.md$|\.ya?ml$|\.json$|\.toml$'; then
-            SCORE=0
-          fi
-
-          # Error handling patterns in diff for this file: +1
-          ERROR_LINES=$(awk -v f="$file" '
-            /^diff --git/ { cur=$0; sub(/.*b\//, "", cur) }
-            cur == f && /^\+[^+]/ && /catch|rescue|except|recover|error|panic/ { count++ }
-            END { print count+0 }
-          ' pr.diff)
-          if [ "$ERROR_LINES" -gt 0 ]; then
-            SCORE=$((SCORE + 1))
-          fi
-
-          if jq --arg f "$file" --argjson s "$SCORE" '.[$f] = $s' /tmp/file_risk_scores.json > /tmp/file_risk_scores.tmp; then
-            mv /tmp/file_risk_scores.tmp /tmp/file_risk_scores.json
-          else
-            echo "⚠️ Failed to score $file, skipping"
-            rm -f /tmp/file_risk_scores.tmp
-          fi
-        done < /tmp/file_diff_stats.txt
-
-        rm -f /tmp/file_diff_stats.txt
+        set -euo pipefail
+        node "$ACTION_PATH/dist/score-risk.js" pr.diff "$EXCLUDE_PATHS"
         echo "✅ File risk scores: $(jq -c . /tmp/file_risk_scores.json)"
 
     - name: Generate file history
