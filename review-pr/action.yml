@@ -640,6 +640,7 @@ runs:
           3. If they're agreeing and adding context, store the additional insight
 
           Use add_memory to record what you learned from each feedback item.
+        timeout: "180"  # 3 min — haiku call; prevents hang from eating the 35-min job budget
         anthropic-api-key: ${{ inputs.anthropic-api-key }}
         openai-api-key: ${{ inputs.openai-api-key }}
         google-api-key: ${{ inputs.google-api-key }}
