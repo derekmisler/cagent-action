@@ -123,7 +123,8 @@ pull_request (opened / ready_for_review / review_requested)
 pull_request_review_comment
   → pr-review-trigger.yml (saves context as artifact)
   → workflow_run fires
-  → pr-review.yml (downloads artifact, routes to reply)
+  → pr-review.yml (downloads artifact, routes to reply-to-feedback for replies to agent
+     comments, or reply-to-mention for top-level @-mentions)
 
 /review comment  –OR–  @docker-agent mention
   → pr-review.yml directly (issue_comment has full permissions)
@@ -164,7 +165,7 @@ with:
 | PR opened/ready                      | Auto-reviews when a PR is opened or marked ready for review.                                                                             |
 | `/review` comment                    | Re-trigger a review, or trigger manually when auto-review hasn't run (e.g. after a force-push). Shows as a check run if `checks: write` is granted. |
 | Reply to review comment              | Responds in-thread and captures feedback to improve future reviews.                                                                      |
-| `@docker-agent` mention              | Answers questions and clarifies review findings in PR comments.                                                                          |
+| `@docker-agent` mention              | Answers questions and clarifies review findings. Works in both PR-level issue comments and inline file-line review comments, including on fork PRs (via the trigger workflow). |
 
 > **Built-in defense-in-depth:**
 >
