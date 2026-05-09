@@ -820,7 +820,7 @@ runs:
           STATUS="⏱️ **Review timed out** (exit code: 124, limit: 1800 s)"
           TIMEOUT_NOTE="- **Exit code:** 124 (SIGKILL — 1800 s timeout)
 - **Timeout limit:** 1800 s
-- Verbose log artifact (\'${VERBOSE_LOG_FILE}\') uploaded for debugging."
+- Verbose log artifact (${VERBOSE_LOG_FILE}) uploaded for debugging."
           if ! gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
             -f body="⏱️ **PR Review Timed Out** — The review agent hit the 1800 s time limit before completing. This usually happens on large or complex diffs. You can re-trigger with \`/review\` — if it times out again, consider splitting the PR into smaller pieces." \
             2>&1; then
