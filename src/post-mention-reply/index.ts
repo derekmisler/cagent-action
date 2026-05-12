@@ -82,6 +82,13 @@ export async function run(config: PostMentionReplyConfig): Promise<void> {
     return;
   }
 
+  // Guard 6: inline reply ID must be a valid positive integer
+  const inReplyToIdNum = parseInt(inReplyToId, 10);
+  if (isInline && (!Number.isFinite(inReplyToIdNum) || inReplyToIdNum <= 0)) {
+    log('⏭️ IN_REPLY_TO_ID is not a valid numeric ID — skipping');
+    return;
+  }
+
   // Extract body: everything up to and including the marker line
   const lines = fileContent.split('\n');
   const markerIndex = lines.findIndex((line) => line.includes(MARKER));
@@ -94,17 +101,23 @@ export async function run(config: PostMentionReplyConfig): Promise<void> {
   // Workflow-level concurrency lock and should-reply guards prevent double-posting
   // for top-level mentions; only inline threads need per-thread deduplication.
   if (isInline) {
-    const inReplyToIdNum = parseInt(inReplyToId, 10);
-    const allComments = await octokit.paginate(octokit.rest.pulls.listReviewComments, {
-      owner,
-      repo,
-      pull_number: prNum,
-      per_page: 100,
-    });
-    const duplicate = allComments.find(
-      (c) => c.in_reply_to_id === inReplyToIdNum && (c.body ?? '').includes(MARKER),
-    );
-    if (duplicate) {
+    let isDuplicate = false;
+    try {
+      const allComments = await octokit.paginate(octokit.rest.pulls.listReviewComments, {
+        owner,
+        repo,
+        pull_number: prNum,
+        per_page: 100,
+      });
+      isDuplicate = allComments.some(
+        (c) => c.in_reply_to_id === inReplyToIdNum && (c.body ?? '').includes(MARKER),
+      );
+    } catch (err) {
+      log(
+        `⚠️ Dedup check failed (${err instanceof Error ? err.message : String(err)}) — posting anyway`,
+      );
+    }
+    if (isDuplicate) {
       log('⏭️ Reply already posted — skipping');
       return;
     }
@@ -116,7 +129,7 @@ export async function run(config: PostMentionReplyConfig): Promise<void> {
       owner,
       repo,
       pull_number: prNum,
-      comment_id: parseInt(inReplyToId, 10),
+      comment_id: inReplyToIdNum,
       body,
     });
     log('✅ Posted inline reply');

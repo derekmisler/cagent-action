@@ -167,6 +167,43 @@ describe('guard: IS_INLINE=true with empty IN_REPLY_TO_ID', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Guard 6 — IN_REPLY_TO_ID numeric validation
+// ---------------------------------------------------------------------------
+
+describe('guard: IN_REPLY_TO_ID numeric validation (IS_INLINE=true)', () => {
+  it('skips when IN_REPLY_TO_ID is a non-numeric string', async () => {
+    await run({ ...BASE_CONFIG, outputFile, isInline: true, inReplyToId: 'abc' });
+
+    expect(mockPaginate).not.toHaveBeenCalled();
+    expect(mockCreateReplyForReviewComment).not.toHaveBeenCalled();
+    expect(mockCreateIssueComment).not.toHaveBeenCalled();
+  });
+
+  it('skips when IN_REPLY_TO_ID is "0"', async () => {
+    await run({ ...BASE_CONFIG, outputFile, isInline: true, inReplyToId: '0' });
+
+    expect(mockPaginate).not.toHaveBeenCalled();
+    expect(mockCreateReplyForReviewComment).not.toHaveBeenCalled();
+    expect(mockCreateIssueComment).not.toHaveBeenCalled();
+  });
+
+  it('skips when IN_REPLY_TO_ID is a negative number string', async () => {
+    await run({ ...BASE_CONFIG, outputFile, isInline: true, inReplyToId: '-5' });
+
+    expect(mockPaginate).not.toHaveBeenCalled();
+    expect(mockCreateReplyForReviewComment).not.toHaveBeenCalled();
+    expect(mockCreateIssueComment).not.toHaveBeenCalled();
+  });
+
+  it('does not apply the guard when IS_INLINE=false (non-numeric ID is ignored)', async () => {
+    // When IS_INLINE=false, inReplyToId is unused and guard 6 must not fire
+    await run({ ...BASE_CONFIG, outputFile, isInline: false, inReplyToId: 'abc' });
+
+    expect(mockCreateIssueComment).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Inline dedup (Guard 7)
 // ---------------------------------------------------------------------------
 
@@ -233,6 +270,30 @@ describe('inline dedup', () => {
     await run({ ...BASE_CONFIG, outputFile, isInline: false });
 
     expect(mockPaginate).not.toHaveBeenCalled();
+  });
+
+  it('logs a warning and posts anyway when paginate throws', async () => {
+    mockPaginate.mockRejectedValue(new Error('API rate limit exceeded'));
+    const stdoutSpy = vi.spyOn(process.stdout, 'write');
+
+    await run({ ...BASE_CONFIG, outputFile, isInline: true, inReplyToId: '77' });
+
+    // Must post despite the dedup failure
+    expect(mockCreateReplyForReviewComment).toHaveBeenCalledWith({
+      owner: 'docker',
+      repo: 'myrepo',
+      pull_number: 42,
+      comment_id: 77,
+      body: expect.stringContaining(MARKER),
+    });
+    expect(mockCreateIssueComment).not.toHaveBeenCalled();
+
+    // Must log the warning with the error message
+    const output = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(output).toContain('\u26a0\ufe0f Dedup check failed');
+    expect(output).toContain('API rate limit exceeded');
+
+    stdoutSpy.mockRestore();
   });
 });
 
