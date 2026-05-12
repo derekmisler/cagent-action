@@ -378,7 +378,7 @@ jobs:
     if: |
       always() && needs.resolve-context.result != 'failure' && (
         (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id && github.event.comment.user.login != 'docker-agent' && github.event.comment.user.type != 'Bot') ||
-        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment' && needs.resolve-context.outputs.comment-in-reply-to-id != '' && needs.resolve-context.outputs.comment-author != 'docker-agent' && needs.resolve-context.outputs.comment-author-type != 'Bot')
+        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment' && needs.resolve-context.outputs.comment-in-reply-to-id != '' && needs.resolve-context.outputs.comment-author != 'docker-agent' && needs.resolve-context.outputs.comment-author-type != 'Bot' && needs.resolve-context.outputs.comment-author != 'docker-agent[bot]')
       )
     runs-on: ubuntu-latest
     permissions:
