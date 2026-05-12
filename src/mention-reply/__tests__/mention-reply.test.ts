@@ -541,6 +541,66 @@ describe('run() — non-member, rejection post fails', () => {
 });
 
 // ---------------------------------------------------------------------------
+// run() — new routing outputs
+// ---------------------------------------------------------------------------
+
+describe('run() — new routing outputs (issue_comment)', () => {
+  it('sets owner, repo, pr-number, is-inline=false, and no in-reply-to-id', async () => {
+    await run();
+
+    expect(core.setOutput).toHaveBeenCalledWith('owner', 'docker');
+    expect(core.setOutput).toHaveBeenCalledWith('repo', 'myrepo');
+    expect(core.setOutput).toHaveBeenCalledWith('pr-number', '42');
+    expect(core.setOutput).toHaveBeenCalledWith('is-inline', 'false');
+    // in-reply-to-id must NOT be set for issue_comment events
+    const calls = vi.mocked(core.setOutput).mock.calls.map((c) => c[0]);
+    expect(calls).not.toContain('in-reply-to-id');
+  });
+});
+
+describe('run() — new routing outputs (pull_request_review_comment)', () => {
+  beforeEach(() => {
+    writeFileSync(eventFilePath, JSON.stringify(makePrReviewCommentEvent()));
+    process.env.GITHUB_EVENT_NAME = 'pull_request_review_comment';
+  });
+
+  it('sets owner, repo, pr-number, is-inline=true, and in-reply-to-id', async () => {
+    await run();
+
+    expect(core.setOutput).toHaveBeenCalledWith('owner', 'docker');
+    expect(core.setOutput).toHaveBeenCalledWith('repo', 'myrepo');
+    expect(core.setOutput).toHaveBeenCalledWith('pr-number', '42');
+    expect(core.setOutput).toHaveBeenCalledWith('is-inline', 'true');
+    expect(core.setOutput).toHaveBeenCalledWith('in-reply-to-id', '77');
+  });
+
+  it('does not set routing outputs when should-reply is false (bot author)', async () => {
+    writeFileSync(
+      eventFilePath,
+      JSON.stringify(
+        makePrReviewCommentEvent({
+          comment: {
+            id: 77,
+            body: '@docker-agent check this',
+            user: { login: 'renovate[bot]', type: 'Bot' },
+          },
+        }),
+      ),
+    );
+
+    await run();
+
+    expect(core.setOutput).toHaveBeenCalledWith('should-reply', 'false');
+    const calls = vi.mocked(core.setOutput).mock.calls.map((c) => c[0]);
+    expect(calls).not.toContain('owner');
+    expect(calls).not.toContain('repo');
+    expect(calls).not.toContain('pr-number');
+    expect(calls).not.toContain('is-inline');
+    expect(calls).not.toContain('in-reply-to-id');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // run() — happy path (issue_comment)
 // ---------------------------------------------------------------------------
 

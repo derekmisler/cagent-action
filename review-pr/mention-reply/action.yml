@@ -6,6 +6,26 @@ inputs:
   mention-context:
     description: "Mention context (PR info + comment body) to respond to"
     required: true
+  owner:
+    description: "Repository owner extracted from the mention-reply handler"
+    required: false
+    default: ""
+  repo:
+    description: "Repository name extracted from the mention-reply handler"
+    required: false
+    default: ""
+  pr-number:
+    description: "Pull request number as a string, from the mention-reply handler"
+    required: false
+    default: ""
+  is-inline:
+    description: "'true' if the mention was on an inline review comment; 'false' for top-level PR comments"
+    required: false
+    default: "false"
+  in-reply-to-id:
+    description: "Comment ID to post the inline reply to (only set when is-inline=true)"
+    required: false
+    default: ""
   anthropic-api-key:
     description: "Anthropic API key"
     required: false
@@ -79,6 +99,21 @@ runs:
         github-token: ${{ inputs.github-token }}
         skip-auth: ${{ inputs.skip-auth }}
 
+    - name: Post reply
+      if: steps.run-mention-reply.outcome == 'success'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        OUTPUT_FILE: ${{ steps.run-mention-reply.outputs.output-file }}
+        OWNER: ${{ inputs.owner }}
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        IS_INLINE: ${{ inputs.is-inline }}
+        IN_REPLY_TO_ID: ${{ inputs.in-reply-to-id }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SECRETS_DETECTED: ${{ steps.run-mention-reply.outputs.secrets-detected }}
+      run: node "$ACTION_PATH/dist/post-mention-reply.js"
     - name: Save reviewer memory
       if: always() && steps.run-mention-reply.outcome != 'skipped'
       continue-on-error: true
