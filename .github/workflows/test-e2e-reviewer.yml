@@ -6,7 +6,6 @@ on:
       pr_number:
         description: 'PR number to run the scenario against'
         required: true
-        default: '207'
       scenario:
         description: 'Scenario to test'
         required: true
