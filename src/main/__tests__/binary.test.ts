@@ -14,6 +14,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@actions/core');
 
+// Prevent production code from writing to real system paths (e.g. ~/.docker/cli-plugins).
+// We keep all real fs operations so that test helpers (existsSync, mkdirSync, mkdtemp,
+// writeFile from node:fs/promises) continue to work against the real temp dir; we only
+// replace the three calls that would otherwise escape into the user's home directory.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    chmodSync: vi.fn(),
+    promises: {
+      ...actual.promises,
+      copyFile: vi.fn().mockResolvedValue(undefined),
+      mkdir: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+});
+
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const {
