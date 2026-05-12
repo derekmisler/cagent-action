@@ -272,3 +272,20 @@ jobs:
           echo "is-inline: ${{ steps.mention-handler.outputs.is-inline }}"
           echo "in-reply-to-id: ${{ steps.mention-handler.outputs.in-reply-to-id }}"
           echo "✅ Inline mention scenario completed (manual run — no assertion)"
+
+      - name: Cleanup anchor and replies
+        if: always() && steps.fork-check.outputs.is_fork != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          ANCHOR_ID: ${{ steps.create-anchor.outputs.test_comment_id }}
+        run: |
+          if [ -z "$ANCHOR_ID" ]; then exit 0; fi
+          # Delete thread replies first
+          gh api "repos/docker/cagent-action/pulls/${{ inputs.pr_number }}/comments" \
+            | jq --argjson id "$ANCHOR_ID" '[.[] | select(.in_reply_to_id == $id)] | .[].id' \
+            | while read -r reply_id; do
+                gh api "repos/docker/cagent-action/pulls/comments/$reply_id" -X DELETE || true
+              done
+          # Delete anchor
+          gh api "repos/docker/cagent-action/pulls/comments/$ANCHOR_ID" -X DELETE || true
