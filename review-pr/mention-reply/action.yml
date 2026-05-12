@@ -100,7 +100,7 @@ runs:
         skip-auth: ${{ inputs.skip-auth }}
 
     - name: Post reply
-      if: always() && steps.run-mention-reply.outcome != 'skipped'
+      if: steps.run-mention-reply.outcome == 'success'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
