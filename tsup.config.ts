@@ -28,6 +28,7 @@ const entry = {
   'filter-diff': src('filter-diff'),
   main: src('main'),
   'mention-reply': src('mention-reply'),
+  'post-mention-reply': src('post-mention-reply'),
   'score-risk': src('score-risk'),
   security: src('security'),
   'signed-commit': src('signed-commit'),

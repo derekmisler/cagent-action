@@ -820,6 +820,11 @@ jobs:
         uses: docker/cagent-action/review-pr/mention-reply@2a43a3882401f45e3114df7f6d66eca184993a90 # v1.5.2
         with:
           mention-context: ${{ steps.mention-context.outputs.prompt }}
+          owner: ${{ steps.mention-context.outputs.owner }}
+          repo: ${{ steps.mention-context.outputs.repo }}
+          pr-number: ${{ steps.mention-context.outputs.pr-number }}
+          is-inline: ${{ steps.mention-context.outputs.is-inline }}
+          in-reply-to-id: ${{ steps.mention-context.outputs.in-reply-to-id }}
           anthropic-api-key: ${{ env.ANTHROPIC_API_KEY_FROM_SSM || secrets.ANTHROPIC_API_KEY }}
           openai-api-key: ${{ env.OPENAI_API_KEY_FROM_SSM || secrets.OPENAI_API_KEY }}
           google-api-key: ${{ secrets.GOOGLE_API_KEY }}

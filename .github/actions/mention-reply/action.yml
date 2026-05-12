@@ -12,6 +12,16 @@ outputs:
     description: "'true' if the reply agent should run; 'false' if the event was skipped or rejected"
   prompt:
     description: 'Formatted context prompt for the mention-reply agent'
+  owner:
+    description: 'Repository owner (org or user) extracted from the event context'
+  repo:
+    description: 'Repository name extracted from the event context'
+  pr-number:
+    description: 'Pull request number as a string'
+  is-inline:
+    description: "'true' if the mention was on an inline review comment; 'false' for top-level PR comments"
+  in-reply-to-id:
+    description: 'Comment ID to reply to when posting an inline review comment (only set when is-inline=true)'
 runs:
   using: 'node24'
   main: '../../../dist/mention-reply.js'

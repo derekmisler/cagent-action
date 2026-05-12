@@ -284,6 +284,13 @@ export async function run(): Promise<void> {
 
   core.setOutput('prompt', prompt);
   core.setOutput('should-reply', 'true');
+  core.setOutput('owner', ctx.owner);
+  core.setOutput('repo', ctx.repo);
+  core.setOutput('pr-number', String(ctx.prNumber));
+  core.setOutput('is-inline', ctx.inline ? 'true' : 'false');
+  if (ctx.inline) {
+    core.setOutput('in-reply-to-id', String(ctx.inline.inReplyToCommentId));
+  }
 }
 
 // Run automatically when executed directly (not in test environments)
