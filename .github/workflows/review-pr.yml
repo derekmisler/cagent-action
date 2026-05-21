@@ -141,8 +141,14 @@ jobs:
     needs: [resolve-context]
     if: |
       always() && (
-        (github.event_name == 'issue_comment' && github.event.issue.pull_request) ||
-        (github.event_name == 'pull_request' && github.event.action != 'review_requested' && github.event.sender.type != 'Bot') ||
+        (github.event_name == 'issue_comment' &&
+         github.event.issue.pull_request &&
+         github.event.comment.user.login != 'docker-agent' &&
+         github.event.comment.user.login != 'docker-agent[bot]' &&
+         github.event.comment.user.type != 'Bot' &&
+         !contains(github.event.comment.body, '<!-- cagent-review -->') &&
+         !contains(github.event.comment.body, '<!-- cagent-review-reply -->')) ||
+        (github.event_name == 'pull_request' && github.event.action != 'review_requested' && github.event.sender.type != 'Bot' && github.event.sender.login != 'docker-agent' && github.event.sender.login != 'docker-agent[bot]') ||
         (github.event_name == 'pull_request' && github.event.action == 'review_requested' && github.event.requested_reviewer.login == 'docker-agent') ||
         inputs.pr-number != '' ||
         (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request')
@@ -372,7 +378,7 @@ jobs:
     if: |
       always() && needs.resolve-context.result != 'failure' && (
         (github.event_name == 'pull_request_review_comment' && github.event.comment.in_reply_to_id && github.event.comment.user.login != 'docker-agent' && github.event.comment.user.type != 'Bot') ||
-        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment' && needs.resolve-context.outputs.comment-in-reply-to-id != '' && needs.resolve-context.outputs.comment-author != 'docker-agent')
+        (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request_review_comment' && needs.resolve-context.outputs.comment-in-reply-to-id != '' && needs.resolve-context.outputs.comment-author != 'docker-agent' && needs.resolve-context.outputs.comment-author-type != 'Bot' && needs.resolve-context.outputs.comment-author != 'docker-agent[bot]')
       )
     runs-on: ubuntu-latest
     permissions:

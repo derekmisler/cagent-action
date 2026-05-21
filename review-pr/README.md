@@ -56,6 +56,12 @@ permissions: {}
 
 jobs:
   save-context:
+    if: >
+      github.event.comment.user.login != 'docker-agent' &&
+      github.event.comment.user.login != 'docker-agent[bot]' &&
+      github.event.comment.user.type != 'Bot' &&
+      !contains(github.event.comment.body, '<!-- cagent-review -->') &&
+      !contains(github.event.comment.body, '<!-- cagent-review-reply -->')
     runs-on: ubuntu-latest
     steps:
       - name: Save event context
@@ -97,7 +103,12 @@ permissions:
 jobs:
   review:
     if: |
-      github.event_name == 'issue_comment' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.comment.user.login != 'docker-agent' &&
+       github.event.comment.user.login != 'docker-agent[bot]' &&
+       github.event.comment.user.type != 'Bot' &&
+       !contains(github.event.comment.body, '<!-- cagent-review -->') &&
+       !contains(github.event.comment.body, '<!-- cagent-review-reply -->')) ||
       github.event.workflow_run.conclusion == 'success'
     uses: docker/cagent-action/.github/workflows/review-pr.yml@VERSION
     permissions:
