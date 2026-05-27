@@ -6,6 +6,12 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to run mention-reply E2E tests against'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -188,13 +194,13 @@ jobs:
   test-mention-reply-toplevel:
     name: Mention Reply (Top-Level) E2E Test
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       id-token: write
       issues: write
     env:
-      TEST_PR_NUMBER: ${{ github.event.pull_request.number }}
+      TEST_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
       - name: Check if fork PR
         id: fork-check
@@ -233,11 +239,26 @@ jobs:
         if: steps.fork-check.outputs.is_fork != 'true'
         uses: docker/cagent-action/setup-credentials@2a43a3882401f45e3114df7f6d66eca184993a90 # v1.5.2
 
+      - name: Create anchor issue comment on current PR
+        if: steps.fork-check.outputs.is_fork != 'true'
+        id: create-anchor
+        env:
+          GH_TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+        run: |
+          COMMENT_ID=$(gh api repos/docker/cagent-action/issues/$TEST_PR_NUMBER/comments \
+            --method POST \
+            --raw-field body="@docker-agent this is an automated e2e test — please reply with a brief acknowledgement." \
+            --jq .id)
+          echo "Created test anchor comment ID: $COMMENT_ID"
+          echo "test_comment_id=$COMMENT_ID" >> $GITHUB_OUTPUT
+
       - name: Write synthetic issue_comment event
         if: steps.fork-check.outputs.is_fork != 'true'
         run: |
+          COMMENT_ID="${{ steps.create-anchor.outputs.test_comment_id }}"
           jq -n \
             --arg actor "${{ github.actor }}" \
+            --argjson comment_id "$COMMENT_ID" \
             --argjson pr_number "$TEST_PR_NUMBER" \
             '{
               "action": "created",
@@ -246,7 +267,7 @@ jobs:
                 "pull_request": { "url": ("https://api.github.com/repos/docker/cagent-action/pulls/" + ($pr_number | tostring)) }
               },
               "comment": {
-                "id": 9999999901,
+                "id": $comment_id,
                 "body": "@docker-agent this is an automated e2e test — please reply with a brief acknowledgement.",
                 "user": { "login": $actor, "type": "User" }
               },
@@ -260,13 +281,13 @@ jobs:
       - name: Run mention-reply handler
         if: steps.fork-check.outputs.is_fork != 'true'
         id: mention-handler
-        uses: ./.github/actions/mention-reply
         env:
-          GITHUB_EVENT_PATH: /tmp/test-event-toplevel.json
-          GITHUB_EVENT_NAME: issue_comment
-        with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
-          org-membership-token: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+          INPUT_GITHUB-TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          INPUT_ORG-MEMBERSHIP-TOKEN: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+        run: |
+          export GITHUB_EVENT_PATH=/tmp/test-event-toplevel.json
+          export GITHUB_EVENT_NAME=issue_comment
+          node "$GITHUB_WORKSPACE/dist/mention-reply.js"
 
       - name: Assert should-reply output
         if: steps.fork-check.outputs.is_fork != 'true'
@@ -312,10 +333,11 @@ jobs:
           echo "✅ Reply posted successfully ($FOUND comment(s) found)"
 
       - name: Cleanup test comments
-        if: always() && steps.fork-check.outputs.is_fork != 'true' && steps.mention-handler.outputs.should-reply == 'true'
+        if: always() && steps.fork-check.outputs.is_fork != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          ANCHOR_ID: ${{ steps.create-anchor.outputs.test_comment_id }}
         run: |
           # Delete any test reply comments posted in the last 5 minutes
           gh api repos/docker/cagent-action/issues/$TEST_PR_NUMBER/comments \
@@ -324,17 +346,22 @@ jobs:
             gh api "repos/docker/cagent-action/issues/comments/$comment_id" -X DELETE || true
             echo "Deleted comment $comment_id"
           done
+          # Delete the anchor comment itself
+          if [ -n "$ANCHOR_ID" ]; then
+            gh api "repos/docker/cagent-action/issues/comments/$ANCHOR_ID" -X DELETE || true
+            echo "Deleted anchor comment $ANCHOR_ID"
+          fi
 
   test-mention-reply-inline:
     name: Mention Reply (Inline) E2E Test
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     env:
-      TEST_PR_NUMBER: ${{ github.event.pull_request.number }}
+      TEST_PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
       - name: Check if fork PR
         id: fork-check
@@ -427,13 +454,13 @@ jobs:
       - name: Run mention-reply handler
         if: steps.fork-check.outputs.is_fork != 'true'
         id: mention-handler
-        uses: ./.github/actions/mention-reply
         env:
-          GITHUB_EVENT_PATH: /tmp/test-event-inline.json
-          GITHUB_EVENT_NAME: pull_request_review_comment
-        with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
-          org-membership-token: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+          INPUT_GITHUB-TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          INPUT_ORG-MEMBERSHIP-TOKEN: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+        run: |
+          export GITHUB_EVENT_PATH=/tmp/test-event-inline.json
+          export GITHUB_EVENT_NAME=pull_request_review_comment
+          node "$GITHUB_WORKSPACE/dist/mention-reply.js"
 
       - name: Assert should-reply output
         if: steps.fork-check.outputs.is_fork != 'true'
