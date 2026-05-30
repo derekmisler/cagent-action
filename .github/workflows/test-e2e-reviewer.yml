@@ -113,13 +113,12 @@ jobs:
       - name: Run mention-reply handler
         if: steps.fork-check.outputs.is_fork != 'true'
         id: mention-handler
-        uses: ./.github/actions/mention-reply
         env:
           GITHUB_EVENT_PATH: /tmp/test-event-toplevel.json
           GITHUB_EVENT_NAME: issue_comment
-        with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
-          org-membership-token: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+          INPUT_GITHUB-TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          INPUT_ORG-MEMBERSHIP-TOKEN: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+        run: node ./dist/mention-reply.js
 
       - name: Run mention reply
         if: steps.fork-check.outputs.is_fork != 'true' && steps.mention-handler.outputs.should-reply == 'true'
@@ -241,13 +240,12 @@ jobs:
       - name: Run mention-reply handler
         if: steps.fork-check.outputs.is_fork != 'true'
         id: mention-handler
-        uses: ./.github/actions/mention-reply
         env:
           GITHUB_EVENT_PATH: /tmp/test-event-inline.json
           GITHUB_EVENT_NAME: pull_request_review_comment
-        with:
-          github-token: ${{ env.GITHUB_APP_TOKEN || github.token }}
-          org-membership-token: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+          INPUT_GITHUB-TOKEN: ${{ env.GITHUB_APP_TOKEN || github.token }}
+          INPUT_ORG-MEMBERSHIP-TOKEN: ${{ env.ORG_MEMBERSHIP_TOKEN || github.token }}
+        run: node ./dist/mention-reply.js
 
       - name: Run mention reply
         if: steps.fork-check.outputs.is_fork != 'true' && steps.mention-handler.outputs.should-reply == 'true'
