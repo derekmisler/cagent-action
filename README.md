@@ -32,7 +32,7 @@ This action includes **built-in security features for all agent executions**:
 - **Prompt Injection Detection**: Warns about suspicious patterns in user prompts
 - **Automatic Incident Response**: Creates security issues and fails workflows when secrets are detected
 
-See [security/README.md](security/README.md) for complete security documentation.
+See [SECURITY.md](SECURITY.md) for complete security documentation.
 
 ## Usage
 
@@ -261,7 +261,7 @@ Please also read our [Code of Conduct](CODE_OF_CONDUCT.md).
 - 📖 [Documentation](README.md)
 - 🐛 [Report Issues](https://github.com/docker/cagent-action/issues)
 - 💬 [Discussions](https://github.com/docker/cagent-action/discussions)
-- 🔒 [Security Policy](security/README.md)
+- 🔒 [Security Policy](SECURITY.md)
 
 ## License
 
