@@ -224,7 +224,7 @@ legitimate configuration code; warns but does not strip or block.
 
 ### Output Scanning (`src/security/sanitize-output.ts`)
 
-`sanitizeOutput(filePath)` scans an AI response against `SECRET_PATTERNS` with two
+`sanitizeOutput(filePath)` scans an AI response against `SECRET_PATTERNS` with three
 false-positive heuristics:
 
 1. **Regex metacharacter check** — if the matched text contains `[`, `]`, `{`, `}`, `(`,
