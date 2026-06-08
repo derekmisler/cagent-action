@@ -324,6 +324,7 @@ agents:
 
   drafter:
     model: sonnet
+    max_iterations: 40
     description: Bug Hypothesis Generator
     add_date: true
     instruction: |
@@ -597,6 +598,7 @@ agents:
 
   verifier:
     model: sonnet
+    max_iterations: 20
     description: Hypothesis Verifier
     add_date: true
     instruction: |

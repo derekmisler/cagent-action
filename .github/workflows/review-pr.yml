@@ -159,7 +159,7 @@ jobs:
         (needs.resolve-context.result == 'success' && needs.resolve-context.outputs.trigger-event == 'pull_request')
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     permissions:
       contents: read
       pull-requests: write
@@ -223,6 +223,18 @@ jobs:
             echo "is_review=false" >> $GITHUB_OUTPUT
             echo "⏭️ Not a /review command, skipping"
           fi
+
+      - name: Post /review deprecation notice
+        if: github.event_name == 'issue_comment' && steps.command.outputs.is_review == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="👋 **Heads up:** The \`/review\` command is deprecated. Please re-request a review from \`docker-agent\` in the PR sidebar instead." \
+            2>&1 || echo "::warning::Failed to post /review deprecation notice"
 
       - name: Classify trigger type
         id: trigger-type
