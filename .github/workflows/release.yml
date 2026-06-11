@@ -312,6 +312,7 @@ jobs:
     needs: release
     if: success() && !inputs.pre_release
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
     steps:
@@ -336,13 +337,13 @@ jobs:
 
       - name: Docker Hub login
         env:
-          HUB_USER: ${{ secrets.HUB_USER }}
-          HUB_PAT: ${{ secrets.HUB_PAT }}
+          HUB_ORG: ${{ secrets.HUB_ORG }}
+          HUB_OAT: ${{ secrets.HUB_OAT }}
         run: |
           set -e
-          if [ -z "${HUB_USER}" ]; then echo "::error::HUB_USER secret is not set"; exit 1; fi
-          if [ -z "${HUB_PAT}" ]; then echo "::error::HUB_PAT secret is not set"; exit 1; fi
-          echo "${HUB_PAT}" | docker login --username "${HUB_USER}" --password-stdin
+          if [ -z "${HUB_ORG}" ]; then echo "::error::HUB_ORG secret is not set"; exit 1; fi
+          if [ -z "${HUB_OAT}" ]; then echo "::error::HUB_OAT secret is not set"; exit 1; fi
+          echo "${HUB_OAT}" | docker login --username "${HUB_ORG}" --password-stdin
 
       - name: Push agent
         env:
