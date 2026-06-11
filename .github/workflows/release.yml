@@ -312,6 +312,7 @@ jobs:
     needs: release
     if: success() && !inputs.pre_release
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
     steps:
@@ -336,13 +337,13 @@ jobs:
 
       - name: Docker Hub login
         env:
-          HUB_USER: ${{ secrets.HUB_USER }}
-          HUB_PAT: ${{ secrets.HUB_PAT }}
+          HUB_ORG: ${{ secrets.HUB_ORG }}
+          HUB_OAT: ${{ secrets.HUB_OAT }}
         run: |
           set -e
-          if [ -z "${HUB_USER}" ]; then echo "::error::HUB_USER secret is not set"; exit 1; fi
-          if [ -z "${HUB_PAT}" ]; then echo "::error::HUB_PAT secret is not set"; exit 1; fi
-          echo "${HUB_PAT}" | docker login --username "${HUB_USER}" --password-stdin
+          if [ -z "${HUB_ORG}" ]; then echo "::error::HUB_ORG secret is not set"; exit 1; fi
+          if [ -z "${HUB_OAT}" ]; then echo "::error::HUB_OAT secret is not set"; exit 1; fi
+          echo "${HUB_OAT}" | docker login --username "${HUB_ORG}" --password-stdin
 
       - name: Push agent
         env:
@@ -352,27 +353,6 @@ jobs:
           if [ -z "${HUB_ORG}" ]; then echo "::error::HUB_ORG secret is not set"; exit 1; fi
           cd review-pr/agents
           TELEMETRY_ENABLED=false docker-agent share push pr-review.yaml "${HUB_ORG}/review-pr"
-
-      - name: Upload README to Docker Hub
-        env:
-          HUB_USER: ${{ secrets.HUB_USER }}
-          HUB_PAT: ${{ secrets.HUB_PAT }}
-          HUB_ORG: ${{ secrets.HUB_ORG }}
-        run: |
-          set -e
-          TOKEN=$(curl -sSf -X POST https://hub.docker.com/v2/users/login/ \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"${HUB_USER}\",\"password\":\"${HUB_PAT}\"}" | jq -r .token)
-          if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
-            echo "::error::Failed to get Docker Hub API token"
-            exit 1
-          fi
-          curl -sSf -X PATCH "https://hub.docker.com/v2/namespaces/${HUB_ORG}/repositories/review-pr" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n --arg desc "Docker Agent-powered PR review team. Analyzes code changes, posts reviews, and learns from feedback." \
-                       --rawfile readme review-pr/README.md \
-                       '{description: $desc, full_description: $readme}')"
 
   update-self-refs:
     name: Update self-refs in cagent-action main
@@ -574,7 +554,7 @@ jobs:
             • Fix description
 
             :inbox_tray: Release: https://github.com/docker/cagent-action/releases/tag/v1.3.0
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ env.ANTHROPIC_API_KEY_FROM_SSM }}
 
       - name: Send Slack notification
         env:
