@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import * as core from '@actions/core';
 import { fetchAIApiKeys } from './ai-keys.js';
 import { getAWSCredentials } from './aws-credentials.js';

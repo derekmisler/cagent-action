@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * check-org-membership — verify whether a GitHub user belongs to an org.
  *

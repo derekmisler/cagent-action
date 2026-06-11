@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Single source of truth for all security detection patterns.
  * Ported from security/secret-patterns.sh and security/sanitize-input.sh.

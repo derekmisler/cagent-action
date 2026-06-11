@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * get-pr-meta — fetch core metadata for a GitHub pull request.
  *

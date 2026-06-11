@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import * as core from '@actions/core';
 import { fromWebToken } from '@aws-sdk/credential-provider-web-identity';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Structural validators applied AFTER a regex match to reject false
  * positives. Ported from github.com/dgageot/portcullis (Apache-2.0).

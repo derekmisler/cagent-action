@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * auth.ts — 4-tier authorization waterfall for comment-triggered events.
  *

@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * exec.ts — run docker-agent with retry loop, timeout, and stdin prompt.
  *

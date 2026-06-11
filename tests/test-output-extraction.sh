@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Test output extraction logic from action.yml
 # Simulates the sanitize-output step's extraction methods
 

@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * auto-filter-diff — automatically filters low-risk files from a PR diff.
  *

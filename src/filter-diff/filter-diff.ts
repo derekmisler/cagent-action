@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * filter-diff — core logic for stripping excluded-path sections from a unified diff.
  *

@@ -1,3 +1,6 @@
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: "PR Review with docker-agent"
 description: "AI-powered pull request review with automatic learning from feedback"
 author: "Docker"

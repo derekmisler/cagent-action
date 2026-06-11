@@ -1,3 +1,6 @@
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: 'Mention Reply Handler'
 description: 'Parse event context, verify org membership, and build prompt for @docker-agent mention replies'
 inputs:

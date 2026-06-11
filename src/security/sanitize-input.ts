@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as core from '@actions/core';
 import { CRITICAL_PATTERNS, MEDIUM_RISK_PATTERNS, SUSPICIOUS_PATTERNS } from './patterns.js';
