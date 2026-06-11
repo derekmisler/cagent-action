@@ -2,7 +2,7 @@
 
 AI-powered pull request review using a multi-agent system. Analyzes code changes, posts inline comments, and learns from your feedback.
 
-> **Primary trigger:** Add `docker-agent` as a reviewer in the PR sidebar — the review starts automatically. The `/review` comment is always available for re-triggering.
+> **Primary trigger:** Add `docker-agent` as a reviewer in the PR sidebar — the review starts automatically. To re-trigger a review, re-request a review from `docker-agent` in the PR sidebar. The `/review` comment still works but is deprecated.
 
 ## Quick Start
 
@@ -152,7 +152,7 @@ The `pull_request` trigger types in your calling workflow control how often revi
 pull_request:
   types: [opened, ready_for_review, review_requested]
 ```
-Reviews run when a PR is opened or marked ready for review. After the initial review, further `pull_request`-triggered reviews only run when `docker-agent` is explicitly re-requested as a reviewer. Use `/review` to re-trigger ad-hoc at any time.
+Reviews run when a PR is opened or marked ready for review. After the initial review, further `pull_request`-triggered reviews only run when `docker-agent` is explicitly re-requested as a reviewer. Re-request a review from `docker-agent` in the PR sidebar to re-trigger at any time. The `/review` comment still works but is deprecated.
 
 **Mode A — continuous re-review on every push:**
 ```yaml
@@ -174,7 +174,7 @@ with:
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Request review from `docker-agent`   | **Primary trigger.** Add `docker-agent` as a reviewer in the PR sidebar — review starts automatically, shown as a check run.            |
 | PR opened/ready                      | Auto-reviews when a PR is opened or marked ready for review.                                                                             |
-| `/review` comment                    | Re-trigger a review, or trigger manually when auto-review hasn't run (e.g. after a force-push). Shows as a check run if `checks: write` is granted. |
+| ~~`/review`~~ _(deprecated)_         | Re-trigger a review, or trigger manually when auto-review hasn't run (e.g. after a force-push). Shows as a check run if `checks: write` is granted. |
 | Reply to review comment              | Responds in-thread and captures feedback to improve future reviews.                                                                      |
 | `@docker-agent` mention              | Answers questions and clarifies review findings. Works in both PR-level issue comments and inline file-line review comments, including on fork PRs (via the trigger workflow). |
 
