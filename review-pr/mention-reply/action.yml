@@ -1,3 +1,6 @@
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: "PR Review Mention Reply"
 description: "Replies to @docker-agent mentions in PR/issue comments"
 author: "Docker"

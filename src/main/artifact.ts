@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * artifact.ts — upload verbose agent log as a GitHub Actions artifact.
  *

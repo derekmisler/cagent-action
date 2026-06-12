@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * binary.ts — download and cache the docker-agent (and optionally mcp-gateway) binary.
  *

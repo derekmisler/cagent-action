@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import type { Octokit } from '@octokit/rest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSignedCommit } from '../signed-commit.js';

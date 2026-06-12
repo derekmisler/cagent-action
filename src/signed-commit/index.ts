@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { Octokit } from '@octokit/rest';

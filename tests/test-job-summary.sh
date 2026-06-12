@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Test job summary format
 # Simulates the complete job summary flow
 

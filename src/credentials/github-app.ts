@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import * as core from '@actions/core';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import type { AwsCredentialIdentityProvider } from '@aws-sdk/types';

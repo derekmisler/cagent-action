@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * add-reaction — post a reaction emoji on a GitHub issue comment or
  * pull request review comment.

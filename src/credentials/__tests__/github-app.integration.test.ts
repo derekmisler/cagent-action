@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 import { execSync } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
 import { fetchGitHubAppCredentials } from '../github-app.js';

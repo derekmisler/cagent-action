@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # act-local.sh — Run GitHub Actions workflows locally with `act`.
 #
 # Fetches a PAT from 1Password and writes a temporary env file so act can skip

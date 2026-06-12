@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * outputs.ts — clean agent output by stripping tool-call noise.
  *

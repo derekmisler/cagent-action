@@ -1,3 +1,6 @@
+// Copyright (c) Docker, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * score-risk — per-file risk scoring for the PR review pipeline.
  *

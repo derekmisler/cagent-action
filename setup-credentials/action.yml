@@ -1,3 +1,6 @@
+# Copyright (c) Docker, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 name: 'Setup Credentials'
 description: 'Fetch credentials from AWS Secrets Manager via OIDC'
 runs:
