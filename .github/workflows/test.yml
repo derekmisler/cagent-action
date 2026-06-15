@@ -41,11 +41,9 @@ jobs:
         run: pnpm biome ci .
 
       - name: Run actionlint
-        run: |
-          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o /tmp/actionlint.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz" | sha256sum -c
-          tar xz -C /usr/local/bin actionlint < /tmp/actionlint.tar.gz
-          actionlint -shellcheck ""
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        with:
+          args: -shellcheck= -color
 
   test:
     name: Unit Tests
